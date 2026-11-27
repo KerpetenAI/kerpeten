@@ -25,7 +25,7 @@ export class Git extends ProcessCapability {
 
   private static readonly SHA = /^[0-9a-f]{40}$/;
 
-  private static readonly NEW_IN_INDEX = /^A[ MD] /;
+  private static readonly NEW_IN_INDEX = /^(A[ MD]| A) /;
 
   @RunValue("repo")
   private readonly repo!: string;

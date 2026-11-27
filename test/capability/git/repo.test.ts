@@ -126,6 +126,9 @@ describe("repository helpers", () => {
     sh(dir, ["add", "notes.txt"]);
     expect(await (await git(dir)).changedTrackedFiles()).toEqual([]);
     sh(dir, ["rm", "-q", "--cached", "notes.txt"]);
+    sh(dir, ["add", "-N", "notes.txt"]);
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual([]);
+    sh(dir, ["rm", "-q", "--cached", "notes.txt"]);
     rmSync(join(dir, "notes.txt"));
     writeFileSync(join(dir, "src/x.ts"), "dirty\n");
     rmSync(join(dir, "src/a b ü.ts"));
