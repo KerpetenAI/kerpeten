@@ -32,6 +32,10 @@ models:
     model: <model-id>
 ```
 
+A model takes an optional `max_output_tokens` (1-1000000). Left out, Kerpeten sets no limit of its own: OpenAI and OpenRouter get no limit, and Anthropic, whose API needs one on every request, gets the limit of the model. An Anthropic model behind another `base_url` must have `max_output_tokens`, because the limit of that model is not known: without it the review stops before any model is called. A model on Anthropic's own API that the SDK does not know yet fails on its first request with an error that asks for the same setting.
+
+When the final answer of the reviewer or the judge comes back empty or does not fit the expected form, the same request is sent again, up to three times in all. If all three fail, the review ends as before: a reviewer without an answer ends the review with an error, a judge without an answer leaves a `judge_error` on that finding.
+
 Build the binary once and run the review from inside that repository:
 
 ```sh

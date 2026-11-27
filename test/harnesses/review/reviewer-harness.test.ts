@@ -327,6 +327,7 @@ describe("reviewer run", () => {
       { text: "done" },
       { text: JSON.stringify(bad) },
       { text: JSON.stringify({ findings: [{ ...finding, extra: 1 }] }) },
+      { text: "not json" },
     ]);
 
     const run = await review({
@@ -340,7 +341,29 @@ describe("reviewer run", () => {
     expect(run.findings).toEqual([]);
     expect(run.completed).toBe(false);
     expect(run.partialReason).toBe("model_error");
+    expect(run.usage.calls).toBe(4);
+  });
+
+  test("an empty final answer is asked for again and the findings of the next answer are kept", async () => {
+    const mock = mockClient([
+      { text: "done" },
+      { toolCalls: [], finish: "length" },
+      { text: JSON.stringify({ findings: [finding] }) },
+    ]);
+
+    const run = await review({
+      client: mock.client,
+      request,
+      limits: limits(),
+      now: () => 0,
+      log,
+    });
+
+    expect(run.completed).toBe(true);
+    expect(run.partialReason).toBeUndefined();
+    expect(run.findings.map((found) => found.title)).toEqual([finding.title]);
     expect(run.usage.calls).toBe(3);
+    expect(mock.calls.length).toBe(3);
   });
 
   test("a call without token counts is warned about and counted", async () => {

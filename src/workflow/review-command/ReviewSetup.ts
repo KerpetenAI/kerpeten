@@ -20,8 +20,6 @@ import type { ReviewPreparation } from "./types/review-command.ts";
  */
 @Service("kerpeten:review-setup")
 export class ReviewSetup {
-  private static readonly UNSENT_OUTPUT_TOKENS = 1_000_000;
-
   @Inject(Names.ENV)
   private readonly env!: Instances[Names.ENV];
 
@@ -112,7 +110,6 @@ export class ReviewSetup {
             model: model.model,
             apiKey: "",
             zdr,
-            maxOutputTokens: ReviewSetup.UNSENT_OUTPUT_TOKENS,
             ...(model.effort === undefined ? {} : { effort: model.effort }),
           },
           plan.adapter,
@@ -125,7 +122,7 @@ export class ReviewSetup {
         apiKey: apiKey ?? "",
         ...(model.base_url === undefined ? {} : { baseUrl: model.base_url }),
         zdr,
-        maxOutputTokens: model.max_output_tokens,
+        ...(model.max_output_tokens === undefined ? {} : { maxOutputTokens: model.max_output_tokens }),
         ...(model.effort === undefined ? {} : { effort: model.effort }),
       });
     } catch (error) {

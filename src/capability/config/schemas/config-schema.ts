@@ -51,7 +51,7 @@ const keyModel = z.strictObject({
     .regex(/^[A-Z][A-Z0-9_]*_API_KEY$/)
     .refine((name) => !RESERVED_KEY_ENV.test(name), "must not name a CI, platform, runner or Kerpeten variable")
     .optional(),
-  max_output_tokens: z.int().min(1).max(1_000_000).default(16000),
+  max_output_tokens: z.int().min(1).max(1_000_000).optional(),
   effort: z.enum(EFFORTS).optional(),
 });
 

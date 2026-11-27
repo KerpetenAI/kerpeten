@@ -19,6 +19,7 @@ export interface ModelSettings {
   readonly baseUrl?: string;
   readonly zdr: boolean;
   readonly effort?: Effort;
+  readonly maxOutputTokens?: number;
 }
 
 export type KeyedProviderAdapter = ProviderAdapter & { readonly keyEnv: string };

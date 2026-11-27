@@ -35,10 +35,9 @@ describe("config", () => {
       model: "k3.1-pro",
       base_url: "https://api.kimi.com/coding/v1",
       api_key_env: "KIMI_API_KEY",
-      max_output_tokens: 16000,
     });
 
-    expect(config.models.judge).toEqual({ provider: "openrouter", model: "some/model", max_output_tokens: 16000 });
+    expect(config.models.judge).toEqual({ provider: "openrouter", model: "some/model" });
     expect(config.backend).toBeUndefined();
 
     expect(config.scoring).toEqual({
