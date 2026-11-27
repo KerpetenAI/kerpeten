@@ -21,7 +21,9 @@ export class AiSdkAdapter implements LlmAdapter {
   private readonly session: SessionOptions;
 
   public constructor(options: AiSdkAdapterOptions) {
-    if (!Number.isSafeInteger(options.maxOutputTokens) || options.maxOutputTokens < 1) {
+    const { maxOutputTokens } = options;
+
+    if (maxOutputTokens !== undefined && (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 1)) {
       throw new Error("maxOutputTokens must be a positive whole number");
     }
 
@@ -30,7 +32,7 @@ export class AiSdkAdapter implements LlmAdapter {
 
     this.session = {
       model: options.model,
-      maxOutputTokens: options.maxOutputTokens,
+      maxOutputTokens,
       cache: options.cache,
       effort: options.effort,
       maxRetries: options.maxRetries ?? AiSdkAdapter.DEFAULT_MAX_RETRIES,
@@ -48,7 +50,7 @@ export class AiSdkAdapter implements LlmAdapter {
       model,
       provider: settings.provider,
       modelId: settings.model,
-      maxOutputTokens: settings.maxOutputTokens,
+      ...(settings.maxOutputTokens === undefined ? {} : { maxOutputTokens: settings.maxOutputTokens }),
       ...(cache === undefined ? {} : { cache }),
       ...(settings.effort === undefined ? {} : { effort: adapter.effortOptions(settings.effort) }),
       ...(settings.maxRetries === undefined ? {} : { maxRetries: settings.maxRetries }),

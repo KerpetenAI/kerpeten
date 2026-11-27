@@ -16,7 +16,7 @@ import type { ProviderLlm } from "../../../src/harnesses/types/harnesses.ts";
 import { ReviewWorkflow } from "../../../src/workflow/review/ReviewWorkflow.ts";
 import { commit, sh, tempRepo, write } from "../../capability/git/git-utils.ts";
 import { mockClient, promptText } from "../../harness-kit/harness-kit-utils.ts";
-import { capturingLogger, log } from "../../harnesses/harnesses-utils.ts";
+import { log } from "../../harnesses/harnesses-utils.ts";
 import { FakeJudgeLlm } from "../../harnesses/judge/FakeJudgeLlm.ts";
 import type { FakeJudgeAnswer } from "../../harnesses/types/harnesses.ts";
 import { reviewComponent } from "./review-utils.ts";
@@ -202,34 +202,72 @@ describe("local review", () => {
     expect(result.dropped).toEqual({ unreadable_file: 1, no_file: 1 });
   });
 
-  test("a tracked edit or an untracked file gives a warning, a clean tree does not", async () => {
+  test("an uncommitted change in a tracked file stops the review before a model is called", async () => {
     const { repo } = repoWithBranch();
+    const mock = mockClient([]);
 
-    const warnings = async () => {
-      const captured = capturingLogger();
-
-      await workflow.run({
+    const review = () =>
+      workflow.run({
         config: config(),
-        reviewerClient: mockClient([{ text: "done" }, { text: '{"findings":[]}' }]).client,
+        reviewerClient: mock.client,
         judgeClient: judgeLlm(),
-        log: captured.log,
+        log,
         repo,
         base: "main",
         pathEnv: "",
       });
 
-      return captured.lines.filter((line) => line.level === "warn").map((line) => line.message);
-    };
-
-    const dirty =
-      "the work tree differs from HEAD; the tools read the work tree, but findings are checked against HEAD";
-
-    expect(await warnings()).not.toContain(dirty);
-    writeFileSync(join(repo, "new.ts"), "untracked\n");
-    expect(await warnings()).toContain(dirty);
-    rmSync(join(repo, "new.ts"));
     writeFileSync(join(repo, "src/a.ts"), "changed\n");
-    expect(await warnings()).toContain(dirty);
+
+    await expect(review()).rejects.toBeInstanceOf(ReviewInputError);
+
+    await expect(review()).rejects.toThrow(
+      "1 tracked file has uncommitted changes: src/a.ts; the tools read the files on disk but the review is of HEAD, so commit or stash the changes and run again",
+    );
+
+    expect(mock.calls.length).toBe(0);
+  });
+
+  test("the error lists at most ten changed files and counts the rest", async () => {
+    const { repo } = repoWithBranch();
+    const names = Array.from({ length: 12 }, (_, n) => `src/f${String(n).padStart(2, "0")}.ts`);
+
+    write(repo, Object.fromEntries(names.map((name) => [name, "one\n"])));
+    commit(repo, "twelve files");
+    write(repo, Object.fromEntries(names.map((name) => [name, "two\n"])));
+
+    const run = workflow.run({
+      config: config(),
+      reviewerClient: mockClient([]).client,
+      judgeClient: judgeLlm(),
+      log,
+      repo,
+      base: "main",
+      pathEnv: "",
+    });
+
+    await expect(run).rejects.toThrow(
+      `12 tracked files have uncommitted changes: ${names.slice(0, 10).join(", ")} and 2 more; the tools read`,
+    );
+  });
+
+  test("an untracked file does not stop the review", async () => {
+    const { repo } = repoWithBranch();
+
+    writeFileSync(join(repo, "new.ts"), "untracked\n");
+
+    const result = await workflow.run({
+      config: config(),
+      reviewerClient: mockClient([{ text: "done" }, { text: '{"findings":[]}' }]).client,
+      judgeClient: judgeLlm(),
+      log,
+      repo,
+      base: "main",
+      pathEnv: "",
+    });
+
+    expect(result.partial).toBe(false);
+    expect(result.findings).toEqual([]);
   });
 
   test("the tools see only the files tracked at HEAD, never ignored local files", async () => {

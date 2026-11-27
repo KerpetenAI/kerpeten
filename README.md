@@ -32,6 +32,10 @@ models:
     model: <model-id>
 ```
 
+A model takes an optional `max_output_tokens` (1-1000000). Left out, Kerpeten sets no limit of its own: OpenAI and OpenRouter get no limit, and Anthropic, whose API needs one on every request, gets the limit of the model. An Anthropic model behind another `base_url` must have `max_output_tokens`, because the limit of that model is not known: without it the review stops before any model is called. A model on Anthropic's own API that the SDK does not know yet fails on its first request with an error that asks for the same setting.
+
+When the final answer of the reviewer or the judge comes back empty or does not fit the expected form, the same request is sent again, up to three times in all. If all three fail, the review ends as before: a reviewer without an answer ends the review with an error, a judge without an answer leaves a `judge_error` on that finding.
+
 Build the binary once and run the review from inside that repository:
 
 ```sh
@@ -54,6 +58,8 @@ Do not start `src/cli/main.ts` directly from another directory: Bun takes the de
 | `kerpeten auth login \| logout \| status [--models]` | Signs in with ChatGPT for models with `provider: chatgpt` |
 | `kerpeten self-check` | Checks the build without the network |
 | `kerpeten capabilities` | Lists what the build can reach (git, the file system, other processes) with the permission each one needs, the permission groups, and the harnesses with the permissions they list |
+
+The review is of `HEAD`, but the tools read the files on disk. So `kerpeten review` stops with an error when a tracked file has uncommitted changes, and names the files; commit or stash them first. Untracked files do not matter, because the tools only see files tracked at `HEAD`.
 
 ## ChatGPT plan
 
@@ -85,13 +91,13 @@ Every request is streamed and sent with `store: false`. Plan usage does not acce
 
 The candidate filter drops findings whose file or lines do not exist at `HEAD`. Each kept finding then goes to the judge in its own call. When no finding is left after the filter, because the reviewer reported none or the filter dropped them all, the judge is not called.
 
-The judge has its own limits beside the reviewer's `max_tool_calls` and `max_duration_minutes`, so neither model can spend the other's share. Neither model has a tool call limit unless one is set: `max_tool_calls` (1-1000) for the reviewer, `max_judge_tool_calls` for the judge. All of them are optional:
+The judge has its own limits beside the reviewer's `max_tool_calls` and `max_duration_minutes`, so neither model can spend the other's share. Neither model has a tool call limit unless one is set: `max_tool_calls` (1-1000) for the reviewer, `max_judge_tool_calls` for the judge. Both time limits are 60 minutes when left out; they are there to end a stuck run, not to cut the work short. All of them are optional:
 
 ```yaml
 limits:
   max_judge_tool_calls: 15            # tool calls per judge call, 1-1000; left out, there is no limit
   max_judge_parallel: 4               # judge calls at the same time, 1-16; 1 runs them one after another
-  max_judge_duration_minutes: 10      # time for the whole judge stage, 1-360
+  max_judge_duration_minutes: 60      # time for the whole judge stage, 1-360; 60 when left out
 ```
 
 The judge's time starts when the judge stage starts, so the longest run is the reviewer's time plus the judge's. When a judge limit ends the stage, the review counts as partial and the findings left unjudged keep a `judge_error`.

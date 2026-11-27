@@ -51,7 +51,7 @@ const keyModel = z.strictObject({
     .regex(/^[A-Z][A-Z0-9_]*_API_KEY$/)
     .refine((name) => !RESERVED_KEY_ENV.test(name), "must not name a CI, platform, runner or Kerpeten variable")
     .optional(),
-  max_output_tokens: z.int().min(1).max(1_000_000).default(16000),
+  max_output_tokens: z.int().min(1).max(1_000_000).optional(),
   effort: z.enum(EFFORTS).optional(),
 });
 
@@ -92,7 +92,7 @@ export const scoringConfigSchema = z.strictObject({ scoring: scoringSchema, thre
 export const judgeLimitsSchema = z.strictObject({
   max_judge_tool_calls: z.int().min(1).max(1000).optional(),
   max_judge_parallel: z.int().min(1).max(16).default(4),
-  max_judge_duration_minutes: z.int().min(1).max(360).default(10),
+  max_judge_duration_minutes: z.int().min(1).max(360).default(60),
 });
 
 export const configSchema = z.strictObject({
@@ -104,7 +104,7 @@ export const configSchema = z.strictObject({
     .strictObject({
       max_inline_comments: z.int().min(0).max(100).default(10),
       max_tool_calls: z.int().min(1).max(1000).optional(),
-      max_duration_minutes: z.int().min(1).max(360).default(20),
+      max_duration_minutes: z.int().min(1).max(360).default(60),
       ...judgeLimitsSchema.shape,
     })
     .prefault({}),

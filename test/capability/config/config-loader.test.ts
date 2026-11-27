@@ -35,10 +35,9 @@ describe("config", () => {
       model: "k3.1-pro",
       base_url: "https://api.kimi.com/coding/v1",
       api_key_env: "KIMI_API_KEY",
-      max_output_tokens: 16000,
     });
 
-    expect(config.models.judge).toEqual({ provider: "openrouter", model: "some/model", max_output_tokens: 16000 });
+    expect(config.models.judge).toEqual({ provider: "openrouter", model: "some/model" });
     expect(config.backend).toBeUndefined();
 
     expect(config.scoring).toEqual({
@@ -52,9 +51,9 @@ describe("config", () => {
 
     expect(config.limits).toEqual({
       max_inline_comments: 10,
-      max_duration_minutes: 20,
+      max_duration_minutes: 60,
       max_judge_parallel: 4,
-      max_judge_duration_minutes: 10,
+      max_judge_duration_minutes: 60,
     });
 
     expect(config.ignore).toEqual(["**/*.lock", "**/generated/**"]);
@@ -77,7 +76,7 @@ describe("config", () => {
     expect(config.limits).toMatchObject({
       max_judge_parallel: 1,
       max_judge_duration_minutes: 3,
-      max_duration_minutes: 20,
+      max_duration_minutes: 60,
     });
 
     expect(ok(`${MODELS}limits: { max_judge_parallel: 16 }\n`).limits.max_judge_parallel).toBe(16);

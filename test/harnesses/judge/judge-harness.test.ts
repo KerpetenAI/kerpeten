@@ -239,11 +239,12 @@ describe("judge run", () => {
         { text: "done" },
         { text: JSON.stringify({ ...labels, verdict: "maybe" }) },
         { text: JSON.stringify({ ...labels, evidence: [] }) },
+        { text: "not json" },
       ]).client,
     });
 
     expect(run.completed).toBe(false);
-    expect(run.usage.calls).toBe(3);
+    expect(run.usage.calls).toBe(4);
 
     if (run.completed) throw new Error("expected a judge error");
 

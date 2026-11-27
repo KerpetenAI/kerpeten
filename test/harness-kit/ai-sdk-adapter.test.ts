@@ -167,7 +167,7 @@ describe("model client", () => {
     expect(Object.keys(answers.results).sort()).toEqual([...answers.calls].sort());
   });
 
-  test("a tool call during finalize is retried once and its usage is kept", async () => {
+  test("a tool call during finalize is retried and its usage is kept", async () => {
     const { client: c, calls } = client([
       [{ toolCalls: [{ name: "read_file", input: { path: "a.ts" } }] }, { input: 70, output: 7 }],
       { text: '{"n":9}' },
@@ -185,17 +185,55 @@ describe("model client", () => {
     expect(calls.length).toBe(2);
   });
 
-  test("tool calls on both finalize attempts end as invalid output", async () => {
+  test("tool calls on all three finalize attempts end as invalid output", async () => {
     const { client: c, calls } = client([
       { toolCalls: [{ name: "read_file", input: { path: "a.ts" } }] },
       { toolCalls: [{ name: "read_file", input: { path: "b.ts" } }] },
+      { toolCalls: [{ name: "read_file", input: { path: "c.ts" } }] },
     ]);
 
     const final = await c.start(INPUT).finalize("report", output, signal());
 
     expect(final).toMatchObject({ ok: false, kind: "invalid_output" });
-    expect(final.usage.map((u) => u.inputTokens)).toEqual([100, 100]);
+    expect(final.usage.map((u) => u.inputTokens)).toEqual([100, 100, 100]);
+    expect(calls.length).toBe(3);
+  });
+
+  test("an empty answer that ran out of output is tried again, and the next answer is accepted", async () => {
+    const { client: c, calls } = client([
+      [
+        { toolCalls: [], finish: "length" },
+        { input: 50, output: 900 },
+      ],
+      { text: '{"n":4}' },
+    ]);
+
+    const final = await c.start(INPUT).finalize("report", output, signal());
+
+    expect(final).toMatchObject({ ok: true, value: { n: 4 } });
+
+    expect(final.usage).toEqual([
+      { inputTokens: 50, outputTokens: 900, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+      { inputTokens: 100, outputTokens: 10, cacheReadTokens: undefined, cacheWriteTokens: undefined },
+    ]);
+
     expect(calls.length).toBe(2);
+    expect(JSON.stringify(calls[1]?.prompt)).toBe(JSON.stringify(calls[0]?.prompt));
+  });
+
+  test("three empty answers end as invalid output and say why", async () => {
+    const empty = { toolCalls: [], finish: "length" } as const;
+    const { client: c, calls } = client([empty, empty, empty]);
+    const final = await c.start(INPUT).finalize("report", output, signal());
+
+    expect(final).toMatchObject({
+      ok: false,
+      kind: "invalid_output",
+      error: "the model ended without an answer",
+    });
+
+    expect(final.usage.length).toBe(3);
+    expect(calls.length).toBe(3);
   });
 
   test("anthropic cache marking marks the system, the context and the newest message, and never piles up", async () => {
@@ -222,13 +260,21 @@ describe("model client", () => {
     expect(JSON.stringify(calls[0]?.prompt)).not.toContain("cacheControl");
   });
 
-  test("output that fails validation is retried once and then reported as invalid", async () => {
-    const { client: c, calls } = client([{ text: '{"n":"x"}' }, { text: "not json" }]);
+  test("output that fails validation is tried three times and then reported as invalid", async () => {
+    const { client: c, calls } = client([{ text: '{"n":"x"}' }, { text: "not json" }, { text: "{}" }]);
     const final = await c.start(INPUT).finalize("report", output, signal());
 
     expect(final).toMatchObject({ ok: false, kind: "invalid_output" });
-    expect(final.usage.length).toBe(2);
-    expect(calls.length).toBe(2);
+    expect(final.usage.length).toBe(3);
+    expect(calls.length).toBe(3);
+  });
+
+  test("output that passes on the third try is accepted", async () => {
+    const { client: c } = client([{ text: "{}" }, { text: "not json" }, { text: '{"n":3}' }]);
+    const final = await c.start(INPUT).finalize("report", output, signal());
+
+    expect(final).toMatchObject({ ok: true, value: { n: 3 } });
+    expect(final.usage.length).toBe(3);
   });
 
   test("output that passes on the second try is accepted", async () => {
@@ -286,6 +332,19 @@ describe("model client", () => {
     expect(final).toMatchObject({ ok: false, kind: "aborted" });
   });
 
+  test("without maxOutputTokens no call names a limit", async () => {
+    const scripted = scriptedModel([{ text: "done" }, { text: '{"n":1}' }]);
+    const c = new AiSdkAdapter({ model: scripted.model, provider: "openai", modelId: "m", maxRetries: 0 });
+    const conversation = c.start(INPUT);
+
+    await conversation.runTools(recorder().hooks, signal());
+    await conversation.finalize("report", output, signal());
+
+    expect(scripted.calls.length).toBe(2);
+
+    for (const call of scripted.calls) expect(call.maxOutputTokens).toBeUndefined();
+  });
+
   test("maxOutputTokens must be a positive whole number", () => {
     const { model } = scriptedModel([]);
 
@@ -299,6 +358,7 @@ describe("model client", () => {
 
 let server: ReturnType<typeof Bun.serve>;
 let stray: ReturnType<typeof Bun.serve>;
+const ANSWERING_MODEL = "answering-model";
 const captured: Captured[] = [];
 const strayHits: string[] = [];
 const saved = { ...process.env };
@@ -308,11 +368,22 @@ beforeAll(() => {
     port: 0,
     hostname: "127.0.0.1",
     async fetch(request) {
-      captured.push({
-        path: new URL(request.url).pathname,
-        headers: request.headers,
-        body: (await request.json()) as Record<string, unknown>,
-      });
+      const body = (await request.json()) as Record<string, unknown>;
+
+      captured.push({ path: new URL(request.url).pathname, headers: request.headers, body });
+
+      if (body.model === ANSWERING_MODEL) {
+        return Response.json({
+          id: "msg_1",
+          type: "message",
+          role: "assistant",
+          model: ANSWERING_MODEL,
+          content: [{ type: "text", text: "done" }],
+          stop_reason: "end_turn",
+          stop_sequence: null,
+          usage: { input_tokens: 1, output_tokens: 1 },
+        });
+      }
 
       return Response.json(
         { error: { message: "refused by the test server", type: "invalid_request_error" } },
@@ -362,6 +433,68 @@ describe("provider wiring", () => {
 
     return c.start(INPUT).runTools(recorder().hooks, signal());
   }
+
+  async function callWithModel(provider: "anthropic" | "openai" | "openrouter", model: string, limit?: number) {
+    const settings = {
+      provider,
+      model,
+      apiKey: "config-key",
+      zdr: true,
+      ...(limit === undefined ? {} : { maxOutputTokens: limit }),
+      maxRetries: 0,
+    };
+
+    const c =
+      provider === "anthropic"
+        ? AiSdkAdapter.fromSettings(settings, new AnthropicAdapter(base()))
+        : AiSdkAdapter.fromSettings({ ...settings, baseUrl: base() });
+
+    return c.start(INPUT).runTools(recorder().hooks, signal());
+  }
+
+  test("without a limit openai and openrouter send none, and anthropic sends the limit of a model it knows", async () => {
+    for (const provider of ["openai", "openrouter"] as const) {
+      await callWithModel(provider, "test-model");
+      expect(captured.at(-1)?.body).not.toHaveProperty("max_tokens");
+      expect(captured.at(-1)?.body).not.toHaveProperty("max_completion_tokens");
+    }
+
+    await callWithModel("anthropic", "claude-opus-5-5");
+    expect(captured.at(-1)?.body.max_tokens).toBe(128_000);
+    expect(captured.length).toBe(3);
+  });
+
+  test("an anthropic model behind another base URL is refused without a limit, before any request", () => {
+    const settings = { provider: "anthropic", model: "k3", apiKey: "k", zdr: false } as const;
+    const elsewhere = { ...settings, baseUrl: "https://models.example/v1" };
+    const anthropic = AiSdkAdapter.ADAPTERS.anthropic;
+
+    expect(() => anthropic.languageModel(elsewhere)).toThrow(
+      "the model k3 is behind another base URL, so its output token limit is not known; set max_output_tokens for it",
+    );
+
+    expect(() => AiSdkAdapter.fromSettings(elsewhere)).toThrow("set max_output_tokens for it");
+    expect(anthropic.languageModel({ ...elsewhere, maxOutputTokens: 8000 })).toBeDefined();
+    expect(anthropic.languageModel(settings)).toBeDefined();
+    expect(anthropic.languageModel({ ...settings, baseUrl: anthropic.defaultBaseUrl })).toBeDefined();
+    expect(anthropic.languageModel({ ...settings, baseUrl: `${anthropic.defaultBaseUrl}/` })).toBeDefined();
+    expect(captured.length).toBe(0);
+  });
+
+  test("an anthropic model with an unknown limit ends as an error unless a limit is given", async () => {
+    const outcome = await callWithModel("anthropic", ANSWERING_MODEL);
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      kind: "model_error",
+      error: `the output token limit of the model ${ANSWERING_MODEL} is not known; set max_output_tokens for it`,
+    });
+
+    expect(captured.at(-1)?.body.max_tokens).toBe(4096);
+
+    expect(await callWithModel("anthropic", ANSWERING_MODEL, 777)).toMatchObject({ ok: true });
+    expect(captured.at(-1)?.body.max_tokens).toBe(777);
+  });
 
   test("each provider sends to base_url with the given key and maxOutputTokens, ignoring provider env vars", async () => {
     process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${stray.port}/v1`;

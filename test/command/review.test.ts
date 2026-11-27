@@ -392,14 +392,13 @@ describe("kerpeten review --dry-run", () => {
     expect(result.code).toBe(0);
 
     expect(result.created).toEqual([
-      { provider: "anthropic", model: "r", apiKey: SECRET, zdr: true, maxOutputTokens: 16000 },
+      { provider: "anthropic", model: "r", apiKey: SECRET, zdr: true },
       {
         provider: "openai",
         model: "j",
         apiKey: "judge-secret",
         baseUrl: "https://judge.example/v1",
         zdr: true,
-        maxOutputTokens: 16000,
         effort: "low",
       },
     ]);
@@ -508,7 +507,8 @@ describe("kerpeten review --dry-run", () => {
     const ok = await run(dir, ["review", "--dry-run", "--base", "main", "--json"], { OPENAI_API_KEY: SECRET });
 
     expect(ok.code).toBe(0);
-    expect(ok.created[0]).toMatchObject({ provider: "openai", apiKey: SECRET, maxOutputTokens: 16000 });
+    expect(ok.created[0]).toMatchObject({ provider: "openai", apiKey: SECRET });
+    expect(ok.created[0]).not.toHaveProperty("maxOutputTokens");
     expect(ok.created[0]?.baseUrl).toBeUndefined();
   });
 
@@ -604,6 +604,44 @@ describe("kerpeten review --dry-run", () => {
     expect(result.code).toBe(0);
     expect(result.created[0]).toMatchObject({ apiKey: SECRET });
     expect(result.created[0]?.baseUrl).toBeUndefined();
+  });
+
+  test("an anthropic model behind another base_url without max_output_tokens stops the review before any model is called", async () => {
+    const limit = ", max_output_tokens: 3000 }";
+
+    for (const role of ["reviewer", "judge"] as const) {
+      const config = CONFIG.split("\n")
+        .map((line) =>
+          line.trimStart().startsWith(`${role}:`) ? line.replace(/, max_output_tokens: \d+ \}$/, " }") : line,
+        )
+        .join("\n");
+
+      expect(config).not.toBe(CONFIG);
+      expect(config).toContain(limit.replace("3000", role === "reviewer" ? "2000" : "3000"));
+
+      const err: string[] = [];
+      const out: string[] = [];
+
+      const code = await KerpetenApp.run(
+        {
+          io: { out: (line) => out.push(line), err: (line) => err.push(line) },
+          env: { ...TRUSTED, KIMI_API_KEY: SECRET, PATH: process.env.PATH ?? "" },
+          cwd: repo(config),
+          now: () => 0,
+        },
+        ["review", "--dry-run", "--base", "main"],
+      );
+
+      const model = role === "reviewer" ? "k3.1-pro" : "k3.1-judge";
+
+      expect(code).toBe(2);
+
+      expect(err.join("\n")).toContain(
+        `cannot set up the ${role} model: the model ${model} is behind another base URL, so its output token limit is not known; set max_output_tokens for it`,
+      );
+
+      expect(out).toEqual([]);
+    }
   });
 
   test("a directory outside git is refused", async () => {

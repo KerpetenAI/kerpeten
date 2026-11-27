@@ -23,6 +23,8 @@ import type { ReportBasis, ReviewChange, ReviewInput } from "../types/review-wor
     "Reads the change between the merge base and HEAD and the known findings of the context file; an empty change ends the review.",
 })
 export class ChangeStep extends FlowStepBase {
+  private static readonly LISTED_FILES = 10;
+
   @Inject(Names.NOW)
   private readonly now!: Instances[Names.NOW];
 
@@ -40,6 +42,15 @@ export class ChangeStep extends FlowStepBase {
 
   @Use(HeadCommit)
   private readonly head!: HeadCommit;
+
+  private static uncommittedMessage(files: readonly string[]): string {
+    const rest = files.length - ChangeStep.LISTED_FILES;
+    const count = files.length === 1 ? "1 tracked file has" : `${files.length} tracked files have`;
+    const listed = files.slice(0, ChangeStep.LISTED_FILES).join(", ");
+    const more = rest > 0 ? ` and ${rest} more` : "";
+
+    return `${count} uncommitted changes: ${listed}${more}; the tools read the files on disk but the review is of HEAD, so commit or stash the changes and run again`;
+  }
 
   public async execute(state: ReviewInput) {
     const { config, log } = state;
@@ -74,6 +85,10 @@ export class ChangeStep extends FlowStepBase {
       }));
     }
 
+    const uncommitted = await git.changedTrackedFiles();
+
+    if (uncommitted.length > 0) throw new ReviewInputError(ChangeStep.uncommittedMessage(uncommitted));
+
     const changes = await this.diff.between(baseSha, head, config.ignore);
     const changedFiles = GitDiff.changedPaths(changes.files);
     const prompts = this.prompts.current;
@@ -83,10 +98,6 @@ export class ChangeStep extends FlowStepBase {
       log.info("nothing to review", { base: baseSha, head });
 
       return this.end(ReviewReport.empty(basis));
-    }
-
-    if (await git.hasLocalChanges()) {
-      log.warn("the work tree differs from HEAD; the tools read the work tree, but findings are checked against HEAD");
     }
 
     const branch = await git.currentBranch();

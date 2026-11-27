@@ -4,6 +4,7 @@ import {
   type LanguageModelUsage,
   type ModelMessage,
   NoObjectGeneratedError,
+  NoOutputGeneratedError,
   Output,
   type StepResult,
   type SystemModelMessage,
@@ -30,9 +31,11 @@ import type { CacheOptions, SessionOptions, ToolExecuteOptions, ToolOutputOption
 import type { CacheMarker } from "./types/provider.ts";
 
 export class AiSdkSession implements LlmSession {
-  private static readonly FINALIZE_ATTEMPTS = 2;
+  private static readonly FINALIZE_ATTEMPTS = 3;
 
   private static readonly CUT_OFF_TOOL_CALL = "not run: the answer was cut off";
+
+  private static readonly NO_ANSWER = "the model ended without an answer";
 
   private static readonly UNKNOWN_USAGE: CallUsage = {
     inputTokens: undefined,
@@ -127,7 +130,7 @@ export class AiSdkSession implements LlmSession {
   private common() {
     return {
       model: this.options.model,
-      maxOutputTokens: this.options.maxOutputTokens,
+      ...(this.options.maxOutputTokens === undefined ? {} : { maxOutputTokens: this.options.maxOutputTokens }),
       maxRetries: this.options.maxRetries,
       ...(this.options.effort === undefined ? {} : { providerOptions: this.options.effort }),
     };
@@ -221,9 +224,11 @@ export class AiSdkSession implements LlmSession {
           },
         });
 
+        const value = result.output;
+
         usage.push(AiSdkSession.usageOf(result.usage));
 
-        return { ok: true, value: result.output, usage };
+        return { ok: true, value, usage };
       } catch (error) {
         if (signal.aborted) {
           usage.push(AiSdkSession.UNKNOWN_USAGE);
@@ -231,9 +236,9 @@ export class AiSdkSession implements LlmSession {
           return { ok: false, kind: "aborted", error: AiSdkSession.message(error), usage };
         }
 
-        if (ToolChoiceViolationError.isInstance(error)) {
+        if (ToolChoiceViolationError.isInstance(error) || NoOutputGeneratedError.isInstance(error)) {
           usage.push(callUsage === undefined ? AiSdkSession.UNKNOWN_USAGE : AiSdkSession.usageOf(callUsage));
-          last = AiSdkSession.message(error);
+          last = NoOutputGeneratedError.isInstance(error) ? AiSdkSession.NO_ANSWER : AiSdkSession.message(error);
           continue;
         }
 
