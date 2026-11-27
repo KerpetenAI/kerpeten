@@ -33,6 +33,13 @@ export class JudgeContext extends ContextBase<JudgeContextSpec, JudgeRequest> {
       heading,
       this.dataBlock("diff", diff.found ? patch.text : this.spec.NO_DIFF),
       "",
+      ...(request.extraContext === undefined
+        ? []
+        : [
+            "Extra context, given by the person who started the review:",
+            this.dataBlock("extra-context", request.extraContext),
+            "",
+          ]),
       "Try to refute the finding first. Use a tool only for a fact you still need. When you have decided, reply briefly without a tool call; you are then asked for the labels as a structured result.",
     ];
   }

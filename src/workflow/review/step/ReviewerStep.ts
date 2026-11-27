@@ -45,6 +45,7 @@ export class ReviewerStep extends FlowStepBase {
         changedFiles: change.changedFiles,
         known: change.known,
         rules: rules.files,
+        ...(change.extraContext === undefined ? {} : { extraContext: change.extraContext }),
         commentLanguage: config.comment_language,
         promptVersion: change.promptVersion,
       },

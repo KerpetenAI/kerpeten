@@ -45,6 +45,7 @@ export interface ReviewerRequest {
   readonly changedFiles: readonly string[];
   readonly known: readonly DiscussedFinding[];
   readonly rules: readonly RuleFile[];
+  readonly extraContext?: string;
   readonly commentLanguage: string;
   readonly promptVersion: string;
 }

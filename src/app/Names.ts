@@ -5,4 +5,5 @@ export enum Names {
   NOW = "kerpeten:now",
   CHATGPT_ENDPOINTS = "kerpeten:chatgpt-endpoints",
   MODEL_CLIENTS = "kerpeten:model-clients",
+  STDIN = "kerpeten:stdin",
 }

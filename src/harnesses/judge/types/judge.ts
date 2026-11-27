@@ -9,6 +9,7 @@ export type JudgeOutput = z.infer<typeof judgeOutput>;
 export interface JudgeRequest {
   readonly finding: ReviewerFinding;
   readonly patch: string;
+  readonly extraContext?: string;
   readonly commentLanguage: string;
   readonly promptVersion: string;
 }
@@ -72,6 +73,7 @@ export interface JudgeStepOptions {
 export interface JudgeStepRequest {
   readonly findings: readonly ReviewerFinding[];
   readonly patch: string;
+  readonly extraContext?: string;
   readonly commentLanguage: string;
   readonly promptVersion: string;
 }

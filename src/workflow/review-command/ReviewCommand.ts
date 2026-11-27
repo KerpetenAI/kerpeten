@@ -31,12 +31,13 @@ import type { ReviewFlags } from "./types/review-command.ts";
   steps: [ReviewFlagStep, ReviewSetupStep, ReviewWorkflow, ReviewOutcomeStep, ReviewPrintStep],
   command: {
     name: "review",
-    usage: "[--dry-run] [--full] [--base <rev>] [--context-file <path>] [--json]",
+    usage: "[--dry-run] [--full] [--base <rev>] [--context-file <path>] [--extra-context <path or ->] [--json]",
     options: {
       "dry-run": { type: "boolean" },
       full: { type: "boolean" },
       base: { type: "string" },
       "context-file": { type: "string" },
+      "extra-context": { type: "string" },
       json: { type: "boolean" },
     },
     oneOf: {
@@ -64,6 +65,12 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
       throw new UsageError("--context-file needs a path");
     }
 
+    const extraContext = args.string("extra-context");
+
+    if (extraContext !== undefined && (extraContext === "" || extraContext.includes("\0"))) {
+      throw new UsageError("--extra-context needs a path, or - for stdin");
+    }
+
     return {
       dryRun: args.boolean("dry-run"),
       full: args.boolean("full"),
@@ -71,6 +78,7 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
       group: args.choice(),
       ...(base === undefined ? {} : { base }),
       ...(contextFile === undefined ? {} : { contextFile }),
+      ...(extraContext === undefined ? {} : { extraContext }),
     };
   }
 

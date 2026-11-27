@@ -107,6 +107,17 @@ describe("judge input", () => {
     expect(notes).toEqual([]);
   });
 
+  test("extra context sits in its own data block after the diff, and only when it is given", () => {
+    const given = new JudgeContext({ ...request, extraContext: "Ticket 7: y is never zero." }, "N").text;
+
+    expect(given).toContain(
+      "Extra context, given by the person who started the review:\n=== BEGIN DATA extra-context N ===\nTicket 7: y is never zero.\n=== END DATA extra-context N ===",
+    );
+
+    expect(given.indexOf("BEGIN DATA diff")).toBeLessThan(given.indexOf("BEGIN DATA extra-context"));
+    expect(new JudgeContext(request, "N").text).not.toContain("xtra context");
+  });
+
   test("a file the diff does not touch gets the no-diff block", () => {
     for (const patch of [sectionB, "", "not a git diff\n+x\n"]) {
       const { text } = new JudgeContext({ ...request, patch }, "N");

@@ -54,12 +54,14 @@ Do not start `src/cli/main.ts` directly from another directory: Bun takes the de
 
 | Command | What it does |
 | --- | --- |
-| `kerpeten review --dry-run [--base <rev>] [--context-file <path>] [--json]` | Reviews the change and prints the findings |
+| `kerpeten review --dry-run [--base <rev>] [--context-file <path>] [--extra-context <path or ->] [--json]` | Reviews the change and prints the findings |
 | `kerpeten auth login \| logout \| status [--models]` | Signs in with ChatGPT for models with `provider: chatgpt` |
 | `kerpeten self-check` | Checks the build without the network |
 | `kerpeten capabilities` | Lists what the build can reach (git, the file system, other processes) with the permission each one needs, the permission groups, and the harnesses with the permissions they list |
 
 The review is of `HEAD`, but the tools read the files on disk. So `kerpeten review` stops with an error when a tracked file has uncommitted changes, and names the files; commit or stash them first. Untracked files do not matter, because the tools only see files tracked at `HEAD`.
+
+`--extra-context <path>` gives the reviewer and the judge text from outside the repository, such as a ticket, a design note or a team rule; `--extra-context -` reads it from stdin. The text goes into the message of the reviewer and of every judge call as data, in a block of its own. It must be UTF-8 text of at most 20,000 characters: a source that cannot be read, is not text, is empty or is longer stops the review with an error before any model is called, and nothing is cut. There is no `.kerpeten.yml` setting for it, so a reviewed change cannot pull a file into the review.
 
 ## ChatGPT plan
 

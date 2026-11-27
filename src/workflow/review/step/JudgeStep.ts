@@ -26,6 +26,7 @@ export class JudgeStep extends FlowStepBase {
       {
         findings: candidates.kept,
         patch: change.patch,
+        ...(change.extraContext === undefined ? {} : { extraContext: change.extraContext }),
         commentLanguage: config.comment_language,
         promptVersion: change.judgePromptVersion,
       },

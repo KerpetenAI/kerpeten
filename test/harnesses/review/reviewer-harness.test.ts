@@ -334,6 +334,17 @@ describe("reviewer input", () => {
     expect(exact.notes).toEqual([]);
   });
 
+  test("extra context sits in its own data block after the rules, and only when it is given", () => {
+    const given = new ReviewerContext({ ...request, extraContext: "Ticket 7: keep the old API." }, "N").text;
+
+    expect(given).toContain(
+      "Extra context, given by the person who started the review:\n=== BEGIN DATA extra-context N ===\nTicket 7: keep the old API.\n=== END DATA extra-context N ===",
+    );
+
+    expect(given.indexOf("BEGIN DATA rules")).toBeLessThan(given.indexOf("BEGIN DATA extra-context"));
+    expect(new ReviewerContext(request, "N").text).not.toContain("xtra context");
+  });
+
   test("a short changed-files list is given whole", () => {
     expect(ReviewerContext.changedFilesBlock([])).toEqual({ text: "(none)", omitted: 0 });
 

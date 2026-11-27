@@ -9,6 +9,7 @@ export interface ReviewFlags {
   readonly full: boolean;
   readonly base?: string;
   readonly contextFile?: string;
+  readonly extraContext?: string;
   readonly group: string;
   readonly json: boolean;
 }

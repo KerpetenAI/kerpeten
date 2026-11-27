@@ -6,6 +6,7 @@ import { ChatGptSignIn } from "../capability/chatgpt/ChatGptSignIn.ts";
 import { ChatGptTokens } from "../capability/chatgpt/ChatGptTokens.ts";
 import { ConfigLoader } from "../capability/config/ConfigLoader.ts";
 import { ContextPackFile } from "../capability/context-pack/ContextPackFile.ts";
+import { ExtraContextFile } from "../capability/extra-context/ExtraContextFile.ts";
 import { Git } from "../capability/git/Git.ts";
 import { GitDiff } from "../capability/git/GitDiff.ts";
 import { GitRoot } from "../capability/git/GitRoot.ts";
@@ -97,6 +98,7 @@ export class KerpetenApp {
     Logger,
     GitRoot,
     ContextPackFile,
+    ExtraContextFile,
     Git,
     GitDiff,
     HeadCommit,
@@ -162,6 +164,7 @@ export class KerpetenApp {
       [Names.CHATGPT_ENDPOINTS]: options.chatgpt ?? ChatGptOAuth.PRODUCTION,
       [Names.MODEL_CLIENTS]:
         options.createClient ?? ((settings, adapter) => AiSdkAdapter.fromSettings(settings, adapter)),
+      [Names.STDIN]: options.stdin ?? (() => Bun.stdin.stream()),
     };
   }
 

@@ -59,6 +59,13 @@ export class ReviewerContext extends ContextBase<ReviewerContextSpec, ReviewerRe
       this.dataBlock("discussed", discussed.text),
       "",
       ...rules,
+      ...(request.extraContext === undefined
+        ? []
+        : [
+            "Extra context, given by the person who started the review:",
+            this.dataBlock("extra-context", request.extraContext),
+            "",
+          ]),
       "Review the change now. Use a tool only to settle a concrete suspicion. When you are done, reply briefly without a tool call; you are then asked for the findings as a structured result.",
     ];
   }
