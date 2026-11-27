@@ -1,10 +1,13 @@
-# Kerpeten
-
-[![npm](https://img.shields.io/npm/v/kerpeten?style=flat-square)](https://www.npmjs.com/package/kerpeten)
-[![ci](https://img.shields.io/github/actions/workflow/status/KerpetenSH/kerpeten/ci.yml?branch=master&style=flat-square&label=ci)](https://github.com/KerpetenSH/kerpeten/actions/workflows/ci.yml)
-[![license](https://img.shields.io/npm/l/kerpeten?style=flat-square)](https://github.com/KerpetenSH/kerpeten/blob/master/LICENSE)
-
-**AI code review in your terminal, where a second model checks every finding.**
+<p align="center">
+  <img src="https://raw.githubusercontent.com/KerpetenSH/kerpeten/master/.github/assets/logo.png" alt="Kerpeten logo" width="128">
+</p>
+<h1 align="center">Kerpeten</h1>
+<p align="center"><b>AI code review in your terminal, where a second model checks every finding.</b></p>
+<p align="center">
+  <a href="https://www.npmjs.com/package/kerpeten"><img alt="npm" src="https://img.shields.io/npm/v/kerpeten?style=flat-square"></a>
+  <a href="https://github.com/KerpetenSH/kerpeten/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/KerpetenSH/kerpeten/ci.yml?branch=master&style=flat-square&label=ci"></a>
+  <a href="https://github.com/KerpetenSH/kerpeten/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/kerpeten?style=flat-square"></a>
+</p>
 
 Kerpeten reads the change on your branch and lets a reviewer model look for defects in it. Then a judge model takes each finding on its own and tries to refute it against the code. What you get is a list of findings, each with a verdict, a score and a note on how to fix it.
 
