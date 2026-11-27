@@ -372,6 +372,26 @@ describe("kerpeten review --dry-run", () => {
     }
   });
 
+  test("uncommitted changes stop the review before stdin is read for the extra context", async () => {
+    const dir = repo();
+
+    writeFileSync(join(dir, "src/a.ts"), "export const changed = 1;\n");
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--base", "main", "--extra-context", "-"],
+      undefined,
+      undefined,
+      [],
+      "",
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("1 tracked file has uncommitted changes: src/a.ts");
+    expect(result.err).not.toContain("--extra-context");
+    expect(result.calls.length).toBe(0);
+  });
+
   test("refuses an empty --extra-context path before any model call", async () => {
     const result = await run(repo(), ["review", "--dry-run", "--base", "main", "--extra-context", ""]);
 
