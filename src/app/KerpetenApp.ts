@@ -1,0 +1,176 @@
+import type { Class } from "@asenajs/ioc";
+import { ChatGptAuthFile } from "../capability/chatgpt/ChatGptAuthFile.ts";
+import { ChatGptOAuth } from "../capability/chatgpt/ChatGptOAuth.ts";
+import { ChatGptPlan } from "../capability/chatgpt/ChatGptPlan.ts";
+import { ChatGptSignIn } from "../capability/chatgpt/ChatGptSignIn.ts";
+import { ChatGptTokens } from "../capability/chatgpt/ChatGptTokens.ts";
+import { ConfigLoader } from "../capability/config/ConfigLoader.ts";
+import { ContextPackFile } from "../capability/context-pack/ContextPackFile.ts";
+import { Git } from "../capability/git/Git.ts";
+import { GitDiff } from "../capability/git/GitDiff.ts";
+import { GitRoot } from "../capability/git/GitRoot.ts";
+import { HeadCommit } from "../capability/git/HeadCommit.ts";
+import { PermissionGroups } from "../capability/PermissionGroups.ts";
+import { RepoJail } from "../capability/repo/RepoJail.ts";
+import { RipgrepSearch } from "../capability/repo/RipgrepSearch.ts";
+import { SearchTimer } from "../capability/repo/SearchTimer.ts";
+import { Cli } from "../cli/Cli.ts";
+import type { CliOptions } from "../cli/types/cli.ts";
+import { AiSdkAdapter } from "../harness-kit/ai-sdk/index.ts";
+import { cliSpec, ExitCode, HarnessApplication } from "../harness-kit/index.ts";
+import { Harnesses } from "../harnesses/Harnesses.ts";
+import { JudgePool } from "../harnesses/judge/JudgePool.ts";
+import { Prompts } from "../harnesses/Prompts.ts";
+import { CandidateFilter } from "../harnesses/review/CandidateFilter.ts";
+import { Scorer } from "../layer/scoring/Scorer.ts";
+import { Logger } from "../log/Logger.ts";
+import { GlobTool } from "../tools/glob/GlobTool.ts";
+import { GrepTool } from "../tools/grep/GrepTool.ts";
+import { ListDirTool } from "../tools/list-dir/ListDirTool.ts";
+import { ReadFileTool } from "../tools/read-file/ReadFileTool.ts";
+import { AuthCommand } from "../workflow/auth/AuthCommand.ts";
+import { AuthStep } from "../workflow/auth/step/AuthStep.ts";
+import { CapabilitiesCommand } from "../workflow/capabilities/CapabilitiesCommand.ts";
+import { CapabilityListStep } from "../workflow/capabilities/step/CapabilityListStep.ts";
+import { ReviewWorkflow } from "../workflow/review/ReviewWorkflow.ts";
+import { CandidateStep } from "../workflow/review/step/CandidateStep.ts";
+import { ChangeStep } from "../workflow/review/step/ChangeStep.ts";
+import { JudgeStep } from "../workflow/review/step/JudgeStep.ts";
+import { ReviewerStep } from "../workflow/review/step/ReviewerStep.ts";
+import { ScoreStep } from "../workflow/review/step/ScoreStep.ts";
+import { ModelKeys } from "../workflow/review-command/ModelKeys.ts";
+import { ReviewCommand } from "../workflow/review-command/ReviewCommand.ts";
+import { ReviewPrinter } from "../workflow/review-command/ReviewPrinter.ts";
+import { ReviewSetup } from "../workflow/review-command/ReviewSetup.ts";
+import { ReviewFlagStep } from "../workflow/review-command/step/ReviewFlagStep.ts";
+import { ReviewOutcomeStep } from "../workflow/review-command/step/ReviewOutcomeStep.ts";
+import { ReviewPrintStep } from "../workflow/review-command/step/ReviewPrintStep.ts";
+import { ReviewSetupStep } from "../workflow/review-command/step/ReviewSetupStep.ts";
+import { SelfCheckCommand } from "../workflow/self-check/SelfCheckCommand.ts";
+import { SelfCheckStep } from "../workflow/self-check/step/SelfCheckStep.ts";
+import { Names } from "./Names.ts";
+import type { Instances, StartedApp } from "./types/app.ts";
+import { WiringLogger } from "./WiringLogger.ts";
+
+/**
+ * The composition root: builds the container from the listed components and the values of `CliOptions`, starts it,
+ * runs the CLI and stops it. A wiring mistake stops every call, help and version included, before any command runs.
+ */
+export class KerpetenApp {
+  public static readonly COMPONENTS: readonly Class[] = [
+    Cli,
+    ReviewCommand,
+    ReviewFlagStep,
+    ReviewSetupStep,
+    ReviewOutcomeStep,
+    ReviewPrintStep,
+    AuthCommand,
+    AuthStep,
+    SelfCheckCommand,
+    SelfCheckStep,
+    CapabilitiesCommand,
+    CapabilityListStep,
+    ReviewWorkflow,
+    ChangeStep,
+    ReviewerStep,
+    CandidateStep,
+    JudgeStep,
+    ScoreStep,
+    Scorer,
+    Prompts,
+    JudgePool,
+    ReviewSetup,
+    ModelKeys,
+    ReviewPrinter,
+    ConfigLoader,
+    ChatGptAuthFile,
+    ChatGptOAuth,
+    ChatGptTokens,
+    ChatGptSignIn,
+    ChatGptPlan,
+    ...Harnesses.ALL,
+    ReadFileTool,
+    ListDirTool,
+    GrepTool,
+    GlobTool,
+    Logger,
+    GitRoot,
+    ContextPackFile,
+    Git,
+    GitDiff,
+    HeadCommit,
+    RepoJail,
+    RipgrepSearch,
+    SearchTimer,
+    CandidateFilter,
+  ];
+
+  public static async run(
+    options: CliOptions,
+    argv: readonly string[],
+    components: readonly Class[] = KerpetenApp.COMPONENTS,
+  ): Promise<number> {
+    let started: StartedApp;
+
+    try {
+      started = await KerpetenApp.start(options, components);
+    } catch (error) {
+      KerpetenApp.report(options, error);
+
+      return ExitCode.FAILED;
+    }
+
+    const { app, cli } = started;
+
+    try {
+      return await cli.run(argv);
+    } finally {
+      const failed = await app.stop();
+
+      if (failed > 0) KerpetenApp.report(options, new Error(`${failed} stop hooks of the container failed`));
+    }
+  }
+
+  /**
+   * Builds the container from the given components, takes the CLI from it and starts it; a start hook that fails
+   * throws its own error, without the container's `StartHookError` around it. After the start only the kit's run build
+   * resolves from the container: run components, once per run, and the singletons they take with `@Use`.
+   */
+  public static async start(options: CliOptions, components: readonly Class[]): Promise<StartedApp> {
+    const app = await HarnessApplication.create({
+      components,
+      io: options.io,
+      permissionGroups: PermissionGroups.SET,
+      instances: { ...KerpetenApp.instances(options) },
+      logger: new WiringLogger(),
+    });
+
+    const cli = await app.resolve(Cli);
+
+    await app.start();
+
+    return { app, cli };
+  }
+
+  private static instances(options: CliOptions): Instances {
+    return {
+      [Names.ENV]: options.env,
+      [Names.CWD]: options.cwd ?? process.cwd(),
+      [Names.NOW]: options.now ?? Date.now,
+      [Names.CHATGPT_ENDPOINTS]: options.chatgpt ?? ChatGptOAuth.PRODUCTION,
+      [Names.MODEL_CLIENTS]:
+        options.createClient ?? ((settings, adapter) => AiSdkAdapter.fromSettings(settings, adapter)),
+    };
+  }
+
+  private static report(options: CliOptions, error: unknown): void {
+    const program = cliSpec(Cli).name;
+
+    for (let link: unknown = error; link !== undefined; link = link instanceof Error ? link.cause : undefined) {
+      const message = link instanceof Error ? link.message : String(link);
+
+      for (const [index, line] of message.split("\n").entries())
+        options.io.err(index === 0 ? `${program}: ${line}` : line);
+    }
+  }
+}

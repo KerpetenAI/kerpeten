@@ -1,0 +1,43 @@
+import { type After, ExitCode, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
+import type { LocalReviewResult } from "../../../harnesses/review/types/review.ts";
+import { terminalLine } from "../../../text/text-utils.ts";
+import { planStopMessage } from "../review-command-utils.ts";
+import type { ReviewSetupStep } from "./ReviewSetupStep.ts";
+
+/**
+ * Looks at the result of the local review, which ran before it: logs its usage, ends with 1 when the ChatGPT plan
+ * stopped the review or the reviewer gave no result, and reports a partial review on stderr, after which the command
+ * goes on.
+ */
+@FlowStep({
+  name: "review-outcome",
+  description: "Logs the usage of the local review and reports a stopped, failed or partial review.",
+})
+export class ReviewOutcomeStep extends FlowStepBase {
+  public execute(state: After<typeof ReviewSetupStep> & LocalReviewResult) {
+    const { plan, log } = state;
+
+    for (const entry of state.usage) log.info("usage", { ...entry });
+
+    if (plan?.adapter.failure !== undefined) {
+      return this.end(this.command.fail(ExitCode.FAILED, planStopMessage(plan.adapter.failure)));
+    }
+
+    if (state.failure !== undefined) {
+      return this.end(
+        this.command.fail(
+          ExitCode.FAILED,
+          `the reviewer gave no result (${state.reviewerPartialReason ?? "model_error"}): ${terminalLine(state.failure)}`,
+        ),
+      );
+    }
+
+    if (state.reviewerPartialReason !== undefined)
+      this.command.report(`partial review (${state.reviewerPartialReason})`);
+
+    if (state.judgePartialReason !== undefined)
+      this.command.report(`partial judge stage (${state.judgePartialReason})`);
+
+    return {};
+  }
+}

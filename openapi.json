@@ -1,0 +1,374 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "kerpeten-api",
+    "version" : "v1"
+  },
+  "servers" : [ {
+    "url" : "/"
+  } ],
+  "security" : [ {
+    "bearerAuth" : [ ]
+  } ],
+  "paths" : {
+    "/v1/runs" : {
+      "post" : {
+        "operationId" : "createRun",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RunRecord"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunAck"
+                }
+              }
+            },
+            "description" : "A run with this run_id is already stored"
+          },
+          "201" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RunAck"
+                }
+              }
+            },
+            "description" : "The run is stored"
+          }
+        },
+        "tags" : [ "run-controller" ]
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "Evidence" : {
+        "type" : "object",
+        "properties" : {
+          "location" : {
+            "type" : "string"
+          },
+          "note" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "location" ]
+      },
+      "Finding" : {
+        "type" : "object",
+        "properties" : {
+          "action" : {
+            "type" : "string",
+            "enum" : [ "inline", "summary", "stored", "suppressed_known", "suppressed_duplicate" ]
+          },
+          "body" : {
+            "type" : "string"
+          },
+          "category" : {
+            "type" : "string",
+            "enum" : [ "bug", "security", "concurrency", "error_handling", "contract", "performance" ]
+          },
+          "comment_ref" : {
+            "type" : "string",
+            "maxLength" : 256,
+            "minLength" : 1
+          },
+          "end_line" : {
+            "type" : "integer",
+            "format" : "int32",
+            "minimum" : 1
+          },
+          "evidence" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Evidence"
+            },
+            "minItems" : 1
+          },
+          "file" : {
+            "type" : "string"
+          },
+          "fingerprint" : {
+            "type" : "string",
+            "pattern" : "^[0-9a-f]{64}$"
+          },
+          "fix_effort" : {
+            "type" : "string",
+            "enum" : [ "easy", "hard" ]
+          },
+          "judge_error" : {
+            "type" : "string"
+          },
+          "nature" : {
+            "type" : "string",
+            "enum" : [ "critical", "edge_case" ]
+          },
+          "priority" : {
+            "type" : "string",
+            "enum" : [ "P0", "P1", "P2" ]
+          },
+          "rationale" : {
+            "type" : "string"
+          },
+          "score" : {
+            "type" : "number",
+            "format" : "double",
+            "maximum" : 100,
+            "minimum" : 0
+          },
+          "start_line" : {
+            "type" : "integer",
+            "format" : "int32",
+            "minimum" : 1
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "verdict" : {
+            "type" : "string",
+            "enum" : [ "verified", "unverified", "refuted" ]
+          }
+        },
+        "required" : [ "action", "body", "category", "end_line", "evidence", "file", "fingerprint", "start_line", "title" ]
+      },
+      "Identity" : {
+        "type" : "object",
+        "properties" : {
+          "mr" : {
+            "type" : "integer",
+            "format" : "int32",
+            "minimum" : 1
+          },
+          "platform" : {
+            "$ref" : "#/components/schemas/Platform"
+          },
+          "project" : {
+            "$ref" : "#/components/schemas/Project"
+          },
+          "tenant" : {
+            "type" : "string",
+            "maxLength" : 64,
+            "minLength" : 1
+          }
+        },
+        "required" : [ "mr", "platform", "project", "tenant" ]
+      },
+      "Model" : {
+        "type" : "object",
+        "properties" : {
+          "effort" : {
+            "type" : "string",
+            "enum" : [ "low", "medium", "high" ]
+          },
+          "model" : {
+            "type" : "string"
+          },
+          "provider" : {
+            "type" : "string",
+            "enum" : [ "openrouter", "anthropic", "openai" ]
+          }
+        },
+        "required" : [ "model", "provider" ]
+      },
+      "Models" : {
+        "type" : "object",
+        "properties" : {
+          "judge" : {
+            "$ref" : "#/components/schemas/Model"
+          },
+          "reviewer" : {
+            "$ref" : "#/components/schemas/Model"
+          }
+        },
+        "required" : [ "judge", "reviewer" ]
+      },
+      "Platform" : {
+        "type" : "object",
+        "properties" : {
+          "host" : {
+            "type" : "string",
+            "maxLength" : 259,
+            "minLength" : 0,
+            "pattern" : "^[a-z0-9.-]+(:[0-9]{1,5})?$"
+          },
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "gitlab", "github" ]
+          }
+        },
+        "required" : [ "host", "kind" ]
+      },
+      "Project" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "maxLength" : 256,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "id" ]
+      },
+      "PromptVersions" : {
+        "type" : "object",
+        "properties" : {
+          "judge" : {
+            "type" : "string"
+          },
+          "reviewer" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "judge", "reviewer" ]
+      },
+      "RunAck" : {
+        "type" : "object",
+        "properties" : {
+          "run_id" : {
+            "type" : "string",
+            "pattern" : "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "created", "duplicate" ]
+          }
+        },
+        "required" : [ "run_id", "status" ]
+      },
+      "RunRecord" : {
+        "type" : "object",
+        "description" : "A review run. Conditional rules: review_scope incremental requires reviewed_from_sha; partial true requires partial_reason; a finding with judge_error has action stored; inline, summary and stored findings without judge_error carry verdict, priority, nature, fix_effort, rationale and score; comment_ref is present exactly for inline and summary.",
+        "properties" : {
+          "base_sha" : {
+            "type" : "string",
+            "pattern" : "^[0-9a-f]{40}$"
+          },
+          "config_hash" : {
+            "type" : "string"
+          },
+          "duration_ms" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          },
+          "findings" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Finding"
+            }
+          },
+          "finished_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "full_fallback_reason" : {
+            "type" : "string"
+          },
+          "harness_version" : {
+            "type" : "string"
+          },
+          "head_sha" : {
+            "type" : "string",
+            "pattern" : "^[0-9a-f]{40}$"
+          },
+          "identity" : {
+            "$ref" : "#/components/schemas/Identity"
+          },
+          "models" : {
+            "$ref" : "#/components/schemas/Models"
+          },
+          "partial" : {
+            "type" : "boolean"
+          },
+          "partial_reason" : {
+            "type" : "string"
+          },
+          "prompt_versions" : {
+            "$ref" : "#/components/schemas/PromptVersions"
+          },
+          "review_scope" : {
+            "type" : "string",
+            "enum" : [ "full", "incremental" ]
+          },
+          "reviewed_from_sha" : {
+            "type" : "string",
+            "pattern" : "^[0-9a-f]{40}$"
+          },
+          "run_id" : {
+            "type" : "string",
+            "pattern" : "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+          },
+          "started_at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "usage" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/Usage"
+            }
+          }
+        },
+        "required" : [ "base_sha", "config_hash", "duration_ms", "findings", "finished_at", "harness_version", "head_sha", "identity", "models", "partial", "prompt_versions", "review_scope", "run_id", "started_at", "usage" ]
+      },
+      "Usage" : {
+        "type" : "object",
+        "properties" : {
+          "cache_read_tokens" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          },
+          "cache_write_tokens" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          },
+          "calls" : {
+            "type" : "integer",
+            "format" : "int32",
+            "minimum" : 0
+          },
+          "input_tokens" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          },
+          "model" : {
+            "type" : "string"
+          },
+          "output_tokens" : {
+            "type" : "integer",
+            "format" : "int64",
+            "minimum" : 0
+          },
+          "provider" : {
+            "type" : "string",
+            "enum" : [ "openrouter", "anthropic", "openai" ]
+          },
+          "role" : {
+            "type" : "string",
+            "enum" : [ "reviewer", "judge" ]
+          }
+        },
+        "required" : [ "calls", "input_tokens", "model", "output_tokens", "provider", "role" ]
+      }
+    },
+    "securitySchemes" : {
+      "bearerAuth" : {
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  }
+}

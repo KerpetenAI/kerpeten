@@ -1,0 +1,5 @@
+language js
+
+JsPrivateClassMemberName() as $name where {
+  register_diagnostic(span=$name, message="Use the private keyword instead of a # name.")
+}

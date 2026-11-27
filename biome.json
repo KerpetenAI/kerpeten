@@ -1,0 +1,144 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": false,
+    "includes": ["**", "!**/*.md", "!openapi.json", "!src/api/types/api.generated.ts", "!dist"]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  },
+  "plugins": ["./biome-plugins/private-keyword.grit"],
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "preset": "recommended",
+      "complexity": {
+        "noStaticOnlyClass": "off"
+      },
+      "style": {
+        "useConsistentMemberAccessibility": {
+          "level": "error",
+          "options": {
+            "accessibility": "explicit"
+          }
+        },
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case", "PascalCase", "export"],
+            "requireAscii": true
+          }
+        }
+      }
+    }
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["src/**", "!src/harness-kit/ai-sdk/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["ai", "ai/**", "@ai-sdk/**", "@openrouter/**"],
+                    "message": "Model SDK packages are imported only under src/harness-kit/ai-sdk/."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/tools/**", "src/capability/repo/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["ai", "ai/**", "@ai-sdk/**", "@openrouter/**"],
+                    "message": "Model SDK packages are imported only under src/harness-kit/ai-sdk/."
+                  },
+                  {
+                    "group": ["@asenajs/ioc/**"],
+                    "message": "A tool reaches a capability only through @Use, never through the container."
+                  }
+                ],
+                "paths": {
+                  "@asenajs/ioc": {
+                    "allowImportNames": ["OnStart"],
+                    "message": "A tool reaches a capability only through @Use, never through the container; a run capability may only mark its @OnStart method."
+                  },
+                  "node:fs": {
+                    "allowImportNames": [
+                      "existsSync",
+                      "lstatSync",
+                      "readdirSync",
+                      "readlinkSync",
+                      "realpathSync",
+                      "statSync",
+                      "Stats"
+                    ],
+                    "message": "Tools only read the file system."
+                  },
+                  "fs": {
+                    "allowImportNames": [
+                      "existsSync",
+                      "lstatSync",
+                      "readdirSync",
+                      "readlinkSync",
+                      "realpathSync",
+                      "statSync",
+                      "Stats"
+                    ],
+                    "message": "Tools only read the file system."
+                  },
+                  "node:fs/promises": "Tools only read the file system, through the synchronous node:fs read functions.",
+                  "fs/promises": "Tools only read the file system, through the synchronous node:fs read functions."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/**", "!src/cli/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noProcessEnv": "error"
+          }
+        }
+      }
+    }
+  ]
+}
