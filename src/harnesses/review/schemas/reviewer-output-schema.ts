@@ -3,7 +3,7 @@ import type { Finding } from "../../../api/types/api.generated.ts";
 import { lineNumber } from "../../../tools/schemas/tool-input-schema.ts";
 import { evidence } from "../../schemas/evidence-schema.ts";
 
-const CATEGORIES = [
+const BACKEND_CATEGORIES = [
   "bug",
   "security",
   "concurrency",
@@ -12,13 +12,16 @@ const CATEGORIES = [
   "performance",
 ] as const satisfies readonly Finding["category"][];
 
+const CATEGORIES_NOT_IN_BACKEND = ["convention"] as const;
+
 export const reviewerFinding = z.strictObject({
   file: z.string(),
   start_line: lineNumber,
   end_line: lineNumber,
-  category: z.enum(CATEGORIES),
+  category: z.enum([...BACKEND_CATEGORIES, ...CATEGORIES_NOT_IN_BACKEND]),
   title: z.string(),
   body: z.string(),
+  fix: z.string().refine((text) => text.trim() !== "", "the fix is empty"),
   evidence: z.array(evidence).min(1),
 });
 

@@ -18,6 +18,7 @@ export interface ReviewInput {
   readonly repo: string;
   readonly base?: string;
   readonly contextFile?: string;
+  readonly extraContext?: string;
   readonly group?: string;
   readonly pathEnv: string;
   readonly config: KerpetenConfig;
@@ -51,5 +52,6 @@ export interface ReviewChange extends ReportBasis {
   readonly title: string;
   readonly description: string;
   readonly known: readonly DiscussedFinding[];
+  readonly extraContext?: string;
   readonly judgePromptVersion: string;
 }

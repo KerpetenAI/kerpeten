@@ -11,6 +11,9 @@ export type Env = Readonly<Record<string, string | undefined>>;
 /** Builds the client of one model. */
 export type ModelClients = (settings: AiSdkSettings, adapter?: ProviderAdapter) => ProviderLlm;
 
+/** Opens the standard input of the program, to be read once to its end. */
+export type Stdin = () => ReadableStream<Uint8Array>;
+
 /**
  * The type of every value the project registers by name in the container. A component injects one as
  * `@Inject(Names.NOW) private readonly now!: Instances[Names.NOW];`. The kit's own values are typed by `KitInstances`.
@@ -21,6 +24,7 @@ export interface Instances {
   readonly [Names.NOW]: () => number;
   readonly [Names.CHATGPT_ENDPOINTS]: ChatGptEndpoints;
   readonly [Names.MODEL_CLIENTS]: ModelClients;
+  readonly [Names.STDIN]: Stdin;
 }
 
 /** A started container and the CLI taken from it before the start. */

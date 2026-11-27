@@ -32,6 +32,7 @@ describe("capabilities", () => {
       "chatgpt-sign-in",
       "config-file",
       "context-pack-file",
+      "extra-context-file",
       "git",
       "git-diff",
       "git-root",
@@ -71,6 +72,7 @@ describe("capabilities", () => {
       "chatgpt-sign-in": undefined,
       "config-file": undefined,
       "context-pack-file": undefined,
+      "extra-context-file": undefined,
       git: undefined,
       "git-diff": undefined,
       "git-root": undefined,
@@ -85,7 +87,7 @@ describe("capabilities", () => {
       .filter((path) => !path.startsWith("src/harness-kit/"))
       .filter((path) => /^@Capability\(/m.test(readFileSync(join(root, path), "utf8")));
 
-    expect(marked.length).toBe(11);
+    expect(marked.length).toBe(12);
     expect((await registered()).length).toBe(marked.length);
   });
 });

@@ -132,6 +132,7 @@ export class JudgePool {
         {
           finding,
           patch: request.patch,
+          ...(request.extraContext === undefined ? {} : { extraContext: request.extraContext }),
           commentLanguage: request.commentLanguage,
           promptVersion: request.promptVersion,
         },

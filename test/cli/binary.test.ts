@@ -33,7 +33,7 @@ describe.skipIf(!native)("compiled linux-x64 binary", () => {
 
     expect(result.stderr.toString()).toBe("");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout.toString()).toMatch(/self-check: reviewer prompt v2 embedded, sha256 [0-9a-f]{64}/);
+    expect(result.stdout.toString()).toMatch(/self-check: reviewer prompt v4 embedded, sha256 [0-9a-f]{64}/);
     expect(result.stdout.toString()).toContain(SDK_LINE);
   });
 

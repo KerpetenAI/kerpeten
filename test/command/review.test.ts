@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { PermissionGroups } from "../../src/capability/PermissionGroups.ts";
@@ -7,7 +8,7 @@ import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
 import type { AiSdkSettings } from "../../src/harness-kit/ai-sdk/index.ts";
 import { ExitCode, PermissionGroupSet } from "../../src/harness-kit/index.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
-import { mockClient } from "../harness-kit/harness-kit-utils.ts";
+import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
 
 const SECRET = "sk-test-secret-value-123";
 
@@ -30,11 +31,11 @@ afterEach(() => {
   mock.restore();
 });
 
-function repo(config: string | null = CONFIG): string {
+function repo(config: string | null = CONFIG, baseFiles: Record<string, string> = {}): string {
   const dir = tempRepo("kerpeten-cli-review-");
 
   dirs.push(dir);
-  write(dir, { "src/a.ts": "export const a = 1;\n" });
+  write(dir, { "src/a.ts": "export const a = 1;\n", ...baseFiles });
 
   if (config !== null) write(dir, { ".kerpeten.yml": config });
 
@@ -53,6 +54,7 @@ const finding = {
   category: "bug",
   title: "Division by zero",
   body: "y can be 0",
+  fix: "Throw when y is 0.",
   evidence: [{ location: "src/a.ts:2", note: "no guard" }],
 };
 
@@ -62,6 +64,7 @@ async function run(
   env: Record<string, string> = { ...TRUSTED, KIMI_API_KEY: SECRET },
   script = [{ text: "done" }, { text: JSON.stringify({ findings: [finding] }) }],
   judgeScript: Parameters<typeof mockClient>[0] = [],
+  stdin: string | Uint8Array | undefined = undefined,
 ) {
   const out: string[] = [];
   const err: string[] = [];
@@ -75,6 +78,7 @@ async function run(
       env: { ...env, PATH: process.env.PATH ?? "" },
       cwd,
       now: () => 0,
+      ...(stdin === undefined ? {} : { stdin: () => new Blob([stdin]).stream() }),
       createClient: (options) => {
         created.push(options);
 
@@ -166,7 +170,7 @@ describe("kerpeten review --dry-run", () => {
     ] as never);
 
     expect(result.code).toBe(0);
-    expect(result.out).toMatch(/^review: [0-9a-f]{12}\.\.[0-9a-f]{12}, 1 changed files, prompt reviewer v2$/m);
+    expect(result.out).toMatch(/^review: [0-9a-f]{12}\.\.[0-9a-f]{12}, 1 changed files, prompt reviewer v4$/m);
     expect(result.out).toContain("findings: 1");
     expect(result.out).toContain("usage: reviewer anthropic/mock-model: 3 calls, 300 input tokens, 30 output tokens");
     expect(result.out).toContain("tool calls: 5");
@@ -196,6 +200,205 @@ describe("kerpeten review --dry-run", () => {
       '"final answer" command=review harness=reviewer ok=true ms=N attempts=1 input_tokens=100 output_tokens=10',
       '"reviewer ended" command=review completed=true findings=1 steps=2 tool_calls=5 ms=N',
     ]);
+  });
+
+  test("gives the project's rule files to the reviewer only, and reports a cut and a link that leaves the repository", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "kerpeten-cli-outside-"));
+
+    dirs.push(outside);
+    writeFileSync(join(outside, "rules.md"), "outside rule\n");
+
+    const agents = `Exported names are snake_case.\n${"x".repeat(40_000)}\nthe last rule\n`;
+    const dir = repo(CONFIG, { "AGENTS.md": agents });
+
+    symlinkSync(join(outside, "rules.md"), join(dir, "CLAUDE.md"));
+    commit(dir, "link the rules");
+
+    const labels = {
+      verdict: "verified",
+      priority: "P1",
+      nature: "edge_case",
+      fix_effort: "easy",
+      rationale: "y is never checked",
+      evidence: [{ location: "src/a.ts:2" }],
+    };
+
+    const result = await run(dir, ["review", "--dry-run", "--base", "main", "--json"], undefined, undefined, [
+      { text: "done" },
+      { text: JSON.stringify(labels) },
+    ]);
+
+    expect(result.code).toBe(0);
+
+    const reviewerPrompt = promptText(result.reviewerCalls[0]);
+    const judgePrompt = promptText(result.judgeCalls[0]);
+
+    expect(reviewerPrompt).toContain("1\\tExported names are snake_case.");
+
+    expect(reviewerPrompt).toContain(
+      "Project rule file AGENTS.md (each line starts with its number and a tab; cut at 40000",
+    );
+
+    expect(reviewerPrompt).not.toContain("the last rule");
+    expect(reviewerPrompt).not.toContain("outside rule");
+    expect(judgePrompt).toContain("BEGIN DATA finding");
+    expect(judgePrompt).not.toContain("snake_case");
+    expect(judgePrompt).not.toContain("Project rule file");
+    expect(result.err).toMatch(/"reviewer input shortened" .*note="AGENTS\.md cut at 40000 characters"/);
+    expect(result.err).toMatch(/"rule file not read" .*file=CLAUDE\.md reason="path is outside the repository"/);
+  });
+
+  test("gives the extra context of a file or of stdin to the reviewer and to the judge", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "kerpeten-cli-extra-"));
+
+    dirs.push(outside);
+
+    const path = join(outside, "ticket.txt");
+
+    writeFileSync(path, "Ticket 7: y is never zero here.\n");
+
+    const labels = {
+      verdict: "refuted",
+      priority: "P2",
+      nature: "edge_case",
+      fix_effort: "easy",
+      rationale: "y is never zero",
+      evidence: [{ location: "src/a.ts:2" }],
+    };
+
+    const judge = [{ text: "done" }, { text: JSON.stringify(labels) }];
+
+    const fromFile = await run(
+      repo(),
+      ["review", "--dry-run", "--base", "main", "--json", "--extra-context", path],
+      undefined,
+      undefined,
+      judge,
+    );
+
+    const fromStdin = await run(
+      repo(),
+      ["review", "--dry-run", "--base", "main", "--json", "--extra-context", "-"],
+      undefined,
+      undefined,
+      judge,
+      "Ticket 7: y is never zero here.\n",
+    );
+
+    for (const result of [fromFile, fromStdin]) {
+      expect(result.code).toBe(0);
+
+      for (const call of [result.reviewerCalls[0], result.judgeCalls[0]]) {
+        expect(promptText(call)).toMatch(
+          /Extra context, given by the person who started the review:\\n=== BEGIN DATA extra-context \S+ ===\\nTicket 7: y is never zero here\.\\n\\n=== END DATA extra-context/,
+        );
+      }
+    }
+  });
+
+  test("without --extra-context the messages have no extra context block", async () => {
+    const result = await run(repo(), ["review", "--dry-run", "--base", "main", "--json"], undefined, undefined, [
+      { text: "done" },
+      { text: "{}" },
+    ]);
+
+    expect(result.code).toBe(0);
+    expect(result.judgeCalls.length).toBeGreaterThan(0);
+
+    for (const call of [...result.reviewerCalls, ...result.judgeCalls]) {
+      expect(promptText(call)).not.toContain("extra-context");
+      expect(promptText(call)).not.toContain("Extra context");
+    }
+  });
+
+  test("refuses extra context that cannot be used, naming the source and the reason, before any model call", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "kerpeten-cli-extra-"));
+
+    dirs.push(outside);
+
+    const file = (name: string, content: string | Uint8Array) => {
+      writeFileSync(join(outside, name), content);
+
+      return join(outside, name);
+    };
+
+    const long = "x".repeat(20_001);
+
+    const cases: [string, string | Uint8Array | undefined, string][] = [
+      [
+        join(outside, "missing.txt"),
+        undefined,
+        `--extra-context ${join(outside, "missing.txt")}: cannot be read (ENOENT)`,
+      ],
+      [outside, undefined, `--extra-context ${outside}: not a regular file`],
+      [
+        file("long.txt", long),
+        undefined,
+        `--extra-context ${join(outside, "long.txt")}: 20001 characters, more than the limit of 20000`,
+      ],
+      [file("empty.txt", ""), undefined, `--extra-context ${join(outside, "empty.txt")}: empty`],
+      [file("blank.txt", " \n\t\n"), undefined, `--extra-context ${join(outside, "blank.txt")}: empty`],
+      [
+        file("latin1.txt", new Uint8Array([0x63, 0x61, 0x66, 0xe9])),
+        undefined,
+        `--extra-context ${join(outside, "latin1.txt")}: not UTF-8`,
+      ],
+      [
+        file("nul.txt", "a\0b"),
+        undefined,
+        `--extra-context ${join(outside, "nul.txt")}: not plain text, it holds a NUL character`,
+      ],
+      ["-", "", "--extra-context stdin: empty"],
+      ["-", long, "--extra-context stdin: 20001 characters, more than the limit of 20000"],
+      ["-", new Uint8Array([0xff]), "--extra-context stdin: not UTF-8"],
+    ];
+
+    for (const [source, stdin, message] of cases) {
+      const result = await run(
+        repo(),
+        ["review", "--dry-run", "--base", "main", "--extra-context", source],
+        undefined,
+        undefined,
+        [],
+        stdin,
+      );
+
+      expect({ source, code: result.code, err: result.err }).toEqual({
+        source,
+        code: 2,
+        err: expect.stringContaining(`kerpeten review: ${message}`),
+      });
+
+      expect(result.calls.length).toBe(0);
+    }
+  });
+
+  test("uncommitted changes stop the review before stdin is read for the extra context", async () => {
+    const dir = repo();
+
+    writeFileSync(join(dir, "src/a.ts"), "export const changed = 1;\n");
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--base", "main", "--extra-context", "-"],
+      undefined,
+      undefined,
+      [],
+      "",
+    );
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("1 tracked file has uncommitted changes: src/a.ts");
+    expect(result.err).not.toContain("--extra-context");
+    expect(result.calls.length).toBe(0);
+  });
+
+  test("refuses an empty --extra-context path before any model call", async () => {
+    const result = await run(repo(), ["review", "--dry-run", "--base", "main", "--extra-context", ""]);
+
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("--extra-context needs a path, or - for stdin");
+    expect(result.created).toEqual([]);
   });
 
   test("a model that gives no result is a failure, not an empty review", async () => {
@@ -263,6 +466,7 @@ describe("kerpeten review --dry-run", () => {
       ...finding,
       title: "Division\u001b[2J by zero\u009b31m",
       body: "y can be 0\u0007\u007f",
+      fix: "Throw\u001b[1m when y is 0.\u0085",
       evidence: [{ location: "src/a.ts:2\u001b]0;pwned\u0007", note: "no\u0085 guard\u001b[0m" }],
     };
 
@@ -282,6 +486,7 @@ describe("kerpeten review --dry-run", () => {
     expect(text.code).toBe(0);
     expect(text.out).toContain("- src/a.ts:2-2 [bug] Division�[2J by zero�31m");
     expect(text.out).toContain("  evidence src/a.ts:2�]0;pwned�: no� guard�[0m");
+    expect(text.out).toContain("  fix Throw�[1m when y is 0.�");
     expect(control(text.out)).toBe(false);
     expect(text.err).toContain("candidate finding dropped");
     expect(control(text.err)).toBe(false);
@@ -320,7 +525,7 @@ describe("kerpeten review --dry-run", () => {
     expect(text.code).toBe(0);
 
     expect(text.out).toContain(
-      "- src/a.ts:2-2 [bug] Division by zero\n  verdict verified, priority P1, nature edge_case, fix_effort easy, score 50, action summary\n  y can be 0\n  rationale y is�[2J never checked",
+      "- src/a.ts:2-2 [bug] Division by zero\n  verdict verified, priority P1, nature edge_case, fix_effort easy, score 50, action summary\n  y can be 0\n  fix Throw when y is 0.\n  rationale y is�[2J never checked",
     );
 
     expect(text.out).toMatch(
@@ -334,6 +539,8 @@ describe("kerpeten review --dry-run", () => {
 
     const json = await run(repo(config), ["review", "--dry-run", "--base", "main", "--json"], env, reviewer, judge);
     const printed = JSON.parse(json.out);
+
+    expect(printed.findings.map((item: { fix: string }) => item.fix)).toEqual([finding.fix, second.fix]);
 
     expect(json.code).toBe(0);
 

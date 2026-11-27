@@ -2,6 +2,7 @@ import { Inject } from "@asenajs/ioc";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
 import { ContextPackFile } from "../../../capability/context-pack/ContextPackFile.ts";
+import { ExtraContextFile } from "../../../capability/extra-context/ExtraContextFile.ts";
 import { Git } from "../../../capability/git/Git.ts";
 import { GitDiff } from "../../../capability/git/GitDiff.ts";
 import { HeadCommit } from "../../../capability/git/HeadCommit.ts";
@@ -14,13 +15,13 @@ import { ReviewReport } from "../ReviewReport.ts";
 import type { ReportBasis, ReviewChange, ReviewInput } from "../types/review-workflow.ts";
 
 /**
- * Reads the change between the merge base and the run's HEAD and the known findings of the context file. An empty diff
- * ends the review.
+ * Reads the change between the merge base and the run's HEAD, the known findings of the context file and the extra
+ * context. An empty diff ends the review.
  */
 @FlowStep({
   name: "change",
   description:
-    "Reads the change between the merge base and HEAD and the known findings of the context file; an empty change ends the review.",
+    "Reads the change between the merge base and HEAD, the known findings of the context file and the extra context; an empty change ends the review.",
 })
 export class ChangeStep extends FlowStepBase {
   private static readonly LISTED_FILES = 10;
@@ -33,6 +34,9 @@ export class ChangeStep extends FlowStepBase {
 
   @Inject(ContextPackFile)
   private readonly contextPacks!: ContextPackFile;
+
+  @Inject(ExtraContextFile)
+  private readonly extraContexts!: ExtraContextFile;
 
   @Use(Git)
   private readonly git!: Git;
@@ -89,6 +93,16 @@ export class ChangeStep extends FlowStepBase {
 
     if (uncommitted.length > 0) throw new ReviewInputError(ChangeStep.uncommittedMessage(uncommitted));
 
+    let extraContext: string | undefined;
+
+    if (state.extraContext !== undefined) {
+      const read = await this.extraContexts.read(state.extraContext);
+
+      if (!read.ok) throw new ReviewInputError(`--extra-context ${read.error}`);
+
+      extraContext = read.text;
+    }
+
     const changes = await this.diff.between(baseSha, head, config.ignore);
     const changedFiles = GitDiff.changedPaths(changes.files);
     const prompts = this.prompts.current;
@@ -109,6 +123,7 @@ export class ChangeStep extends FlowStepBase {
       title: branch ?? head,
       description: await git.commitMessages(baseSha, head),
       known,
+      ...(extraContext === undefined ? {} : { extraContext }),
       judgePromptVersion: prompts.judge,
     };
 

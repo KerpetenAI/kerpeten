@@ -1,6 +1,7 @@
 import { Context, ContextBase, contextSpec } from "../../harness-kit/index.ts";
+import { LineSplitter } from "../../text/LineSplitter.ts";
 import { cut, shortLine } from "../../text/text-utils.ts";
-import type { DiscussedFinding, ListBlock, ReviewerContextSpec, ReviewerRequest } from "./types/review.ts";
+import type { DiscussedFinding, ListBlock, ReviewerContextSpec, ReviewerRequest, RuleFile } from "./types/review.ts";
 
 @Context({
   MAX_PATCH_CHARS: 400_000,
@@ -9,6 +10,7 @@ import type { DiscussedFinding, ListBlock, ReviewerContextSpec, ReviewerRequest 
   MAX_TEXT_CHARS: 20_000,
   MAX_CHANGED_FILES: 2_000,
   MAX_CHANGED_FILES_CHARS: 100_000,
+  MAX_RULE_FILE_CHARS: 40_000,
 })
 export class ReviewerContext extends ContextBase<ReviewerContextSpec, ReviewerRequest> {
   protected sections(request: ReviewerRequest, notes: string[]): readonly string[] {
@@ -26,6 +28,15 @@ export class ReviewerContext extends ContextBase<ReviewerContextSpec, ReviewerRe
     const changed = ReviewerContext.changedFilesBlock(request.changedFiles);
 
     if (changed.omitted > 0) notes.push(`${changed.omitted} changed files left out`);
+
+    const rules =
+      request.rules.length === 0
+        ? [
+            "Project rule files (AGENTS.md and CLAUDE.md in the repository root):",
+            this.dataBlock("rules", "(none)"),
+            "",
+          ]
+        : request.rules.flatMap((file) => this.ruleBlock(file, notes));
 
     return [
       "Merge request title:",
@@ -47,6 +58,14 @@ export class ReviewerContext extends ContextBase<ReviewerContextSpec, ReviewerRe
       "Already discussed or known findings (do not report these again):",
       this.dataBlock("discussed", discussed.text),
       "",
+      ...rules,
+      ...(request.extraContext === undefined
+        ? []
+        : [
+            "Extra context, given by the person who started the review:",
+            this.dataBlock("extra-context", request.extraContext),
+            "",
+          ]),
       "Review the change now. Use a tool only to settle a concrete suspicion. When you are done, reply briefly without a tool call; you are then asked for the findings as a structured result.",
     ];
   }
@@ -88,5 +107,26 @@ export class ReviewerContext extends ContextBase<ReviewerContextSpec, ReviewerRe
     }
 
     return { text: lines.length === 0 ? "(none)" : lines.join("\n"), omitted: files.length - lines.length };
+  }
+
+  private ruleBlock(file: RuleFile, notes: string[]): readonly string[] {
+    const max = this.spec.MAX_RULE_FILE_CHARS;
+    const text = cut(file.text, max);
+
+    if (text.cut) notes.push(`${file.name} cut at ${max} characters`);
+
+    const lines = LineSplitter.split(text.text).map((line, index) => `${index + 1}\t${line}`);
+
+    const details = [
+      ...(file.sameText.length === 0 ? [] : [`${file.sameText.join(" and ")} has the same text`]),
+      "each line starts with its number and a tab",
+      ...(text.cut ? [`cut at ${max} characters; read the rest with read_file`] : []),
+    ];
+
+    return [
+      `Project rule file ${file.name} (${details.join("; ")}):`,
+      this.dataBlock(`rules-${file.name}`, lines.join("\n")),
+      "",
+    ];
   }
 }

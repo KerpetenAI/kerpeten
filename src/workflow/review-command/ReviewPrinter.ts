@@ -28,8 +28,8 @@ export class ReviewPrinter {
   }
 
   private static outputFields(finding: JudgedFinding): JudgedFinding {
-    const { file, start_line, end_line, category, title, body, evidence } = finding;
-    const reviewer = { file, start_line, end_line, category, title, body, evidence };
+    const { file, start_line, end_line, category, title, body, fix, evidence } = finding;
+    const reviewer = { file, start_line, end_line, category, title, body, fix, evidence };
 
     if ("judge_error" in finding) return { ...reviewer, judge_error: finding.judge_error, action: finding.action };
 
@@ -73,6 +73,8 @@ export class ReviewPrinter {
       io.out(`  ${ReviewPrinter.judgeSummary(finding)}`);
 
       io.out(`  ${terminalLine(finding.body)}`);
+
+      io.out(`  fix ${terminalLine(finding.fix)}`);
 
       if (!("judge_error" in finding)) io.out(`  rationale ${terminalLine(finding.rationale)}`);
 

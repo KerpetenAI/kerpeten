@@ -33,6 +33,13 @@ export class JudgeContext extends ContextBase<JudgeContextSpec, JudgeRequest> {
       heading,
       this.dataBlock("diff", diff.found ? patch.text : this.spec.NO_DIFF),
       "",
+      ...(request.extraContext === undefined
+        ? []
+        : [
+            "Extra context, given by the person who started the review:",
+            this.dataBlock("extra-context", request.extraContext),
+            "",
+          ]),
       "Try to refute the finding first. Use a tool only for a fact you still need. When you have decided, reply briefly without a tool call; you are then asked for the labels as a structured result.",
     ];
   }
@@ -52,8 +59,9 @@ export class JudgeContext extends ContextBase<JudgeContextSpec, JudgeRequest> {
     const spec = contextSpec(JudgeContext);
     const title = cut(finding.title, spec.MAX_TEXT_CHARS);
     const body = cut(finding.body, spec.MAX_TEXT_CHARS);
+    const fix = cut(finding.fix, spec.MAX_TEXT_CHARS);
 
-    if (title.cut || body.cut) notes.push("finding text cut");
+    if (title.cut || body.cut || fix.cut) notes.push("finding text cut");
 
     const shown = finding.evidence.slice(0, spec.MAX_EVIDENCE_ITEMS);
     const omitted = finding.evidence.length - shown.length;
@@ -73,6 +81,8 @@ export class JudgeContext extends ContextBase<JudgeContextSpec, JudgeRequest> {
       `title: ${title.text}`,
       "body:",
       body.text,
+      "fix:",
+      fix.text,
       "evidence:",
       ...evidence,
     ].join("\n");

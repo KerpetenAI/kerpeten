@@ -6,6 +6,7 @@ import { ChatGptSignIn } from "../capability/chatgpt/ChatGptSignIn.ts";
 import { ChatGptTokens } from "../capability/chatgpt/ChatGptTokens.ts";
 import { ConfigLoader } from "../capability/config/ConfigLoader.ts";
 import { ContextPackFile } from "../capability/context-pack/ContextPackFile.ts";
+import { ExtraContextFile } from "../capability/extra-context/ExtraContextFile.ts";
 import { Git } from "../capability/git/Git.ts";
 import { GitDiff } from "../capability/git/GitDiff.ts";
 import { GitRoot } from "../capability/git/GitRoot.ts";
@@ -22,6 +23,7 @@ import { Harnesses } from "../harnesses/Harnesses.ts";
 import { JudgePool } from "../harnesses/judge/JudgePool.ts";
 import { Prompts } from "../harnesses/Prompts.ts";
 import { CandidateFilter } from "../harnesses/review/CandidateFilter.ts";
+import { RuleFiles } from "../harnesses/review/RuleFiles.ts";
 import { Scorer } from "../layer/scoring/Scorer.ts";
 import { Logger } from "../log/Logger.ts";
 import { GlobTool } from "../tools/glob/GlobTool.ts";
@@ -96,6 +98,7 @@ export class KerpetenApp {
     Logger,
     GitRoot,
     ContextPackFile,
+    ExtraContextFile,
     Git,
     GitDiff,
     HeadCommit,
@@ -103,6 +106,7 @@ export class KerpetenApp {
     RipgrepSearch,
     SearchTimer,
     CandidateFilter,
+    RuleFiles,
   ];
 
   public static async run(
@@ -160,6 +164,7 @@ export class KerpetenApp {
       [Names.CHATGPT_ENDPOINTS]: options.chatgpt ?? ChatGptOAuth.PRODUCTION,
       [Names.MODEL_CLIENTS]:
         options.createClient ?? ((settings, adapter) => AiSdkAdapter.fromSettings(settings, adapter)),
+      [Names.STDIN]: options.stdin ?? (() => Bun.stdin.stream()),
     };
   }
 
