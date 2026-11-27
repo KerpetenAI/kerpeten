@@ -1,6 +1,8 @@
 {
   "name": "kerpeten-harness",
   "version": "0.1.0",
+  "author": "LibirSoft",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "packageManager": "bun@1.4.5",

@@ -110,3 +110,7 @@ bun run build -- --target linux-x64
 ```
 
 `check` runs the linter, the type check, the tests and the source layout rules. `build` writes a standalone binary to `dist/`; the targets are `linux-x64`, `linux-arm64` and `darwin-arm64`.
+
+## License
+
+MIT, see [LICENSE](LICENSE). Written by LibirSoft.
