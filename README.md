@@ -1,66 +1,102 @@
-# kerpeten
+# Kerpeten
 
-The Kerpeten code review CLI. It reads the change between a base branch and `HEAD`, lets a reviewer model inspect the repository read-only, and prints the findings. A judge model then tries to refute each finding on its own, also read-only, and labels it. A scorer turns the labels into a score and the action a posted review would take.
+[![npm](https://img.shields.io/npm/v/kerpeten?style=flat-square)](https://www.npmjs.com/package/kerpeten)
+[![ci](https://img.shields.io/github/actions/workflow/status/KerpetenSH/kerpeten/ci.yml?branch=master&style=flat-square&label=ci)](https://github.com/KerpetenSH/kerpeten/actions/workflows/ci.yml)
+[![license](https://img.shields.io/npm/l/kerpeten?style=flat-square)](https://github.com/KerpetenSH/kerpeten/blob/master/LICENSE)
 
-This build only reviews locally: `review` needs `--dry-run`, and nothing is posted to a merge request or sent to the backend yet.
+**AI code review in your terminal, where a second model checks every finding.**
 
-## Install
+Kerpeten reads the change on your branch and lets a reviewer model look for defects in it. Then a judge model takes each finding on its own and tries to refute it against the code. What you get is a list of findings, each with a verdict, a score and a note on how to fix it.
 
-```sh
-npm install -g kerpeten
+- **Two models, not one.** The reviewer finds, the judge doubts. A finding the judge refutes gets a score of 0, so a wrong guess does not look like a real defect.
+- **Read-only.** The models can read and search the files of your repository, and nothing else. They cannot change a file or run a command.
+- **Your models.** Anthropic, OpenAI, OpenRouter, or your ChatGPT plan instead of an API key. The reviewer and the judge can be different models.
+- **Your rules.** A change that breaks a rule written in your `AGENTS.md` or `CLAUDE.md` is a finding too.
+- **No silent fallback.** A missing key stops the review with a clear error. When a limit ends the review early or a long input is cut, Kerpeten reports it. It never switches to another model on its own.
+
+> **Status:** Kerpeten is at an early stage. Today it reviews on your machine and prints the findings. It does not post the review to a merge request yet.
+
+## What a review looks like
+
+Two of the four findings of a real run on a small test repository. The comments were written in Turkish and are translated here.
+
+```text
+review: 524f2b14fb27..69435fefd9f2, 2 changed files, prompt reviewer v4
+findings: 4
+- src/flows/partialRefund.ts:10-10 [bug] The handling fee is not rounded down to whole cents.
+  verdict verified, priority P1, nature critical, fix_effort easy, score 70, action inline
+  For a request of 100 cents the 1.5% fee is taken as 1.5 cents instead of being rounded down to 1 cent. The flow returns 98.5 cents instead of 99.
+  fix Round the handling fee down to whole cents before you take it from the refund.
+  rationale A request of 100 cents passes the check for a positive amount, and the fee of 1.5 cents is taken without rounding, so the flow returns 98.5 cents instead of 99.
+  evidence src/flows/partialRefund.ts:10: The percentage is stored without rounding, so it can be a part of a cent.
+  evidence src/flows/partialRefund.ts:12: The fee is taken from the requested amount as it is.
+  evidence AGENTS.md:6: Money must be a whole number of cents.
+- src/flows/partialRefund.ts:6-6 [convention] The id of the partial refund flow is not in snake_case.
+  verdict verified, priority P2, nature critical, fix_effort easy, score 45, action summary
+  The `id` of the new flow is `partialRefund`; the project rule says that flow ids are written in snake_case.
+  fix Change the `id` to `partial_refund`.
+  rationale `AGENTS.md` says that the ids of the flows under `src/flows/` are in snake_case; the `id` of the new flow is `partialRefund`, which is camelCase.
+  evidence AGENTS.md:5: The `id` fields of the flows under `src/flows/` must be in snake_case.
+  evidence src/flows/partialRefund.ts:6: The `id` of the new flow is `partialRefund`, in camelCase.
 ```
 
-The package brings a ready binary for Linux (x64 and arm64, glibc) and for macOS (arm64). npm picks the one for your machine; Node.js 18 or later is needed only for the small launcher that starts it. There is no build yet for Windows, for Intel Macs or for a musl Linux such as Alpine: on those the `kerpeten` command stops with an error that says so.
+## Quick start
 
-## Requirements
+1. Install Kerpeten:
 
-- [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) on `PATH`
-- An API key for the reviewer's provider and one for the judge's provider: `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. The reviewer and the judge can use different providers and models; when they share a provider, one key serves both. A model with `api_key_env` reads its key from that variable instead. A model with a `base_url` or a key name other than the provider default must be listed in `KERPETEN_TRUSTED_ENDPOINTS` as `<KEY_NAME>=<base_url or provider>`. The command checks the key and the endpoint of both models before it calls either one and stops with a usage error when one is missing or not trusted.
+   ```sh
+   npm install -g kerpeten
+   ```
 
-Instead of an API key, a model can use your ChatGPT plan: set its `provider` to `chatgpt` and sign in once with `kerpeten auth login` (see [ChatGPT plan](#chatgpt-plan)).
+   It also needs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) on your `PATH`; the models search your code with it.
 
-## Usage
+2. Add a `.kerpeten.yml` to the root of the repository you want to review:
 
-Add a `.kerpeten.yml` to the root of the repository you want to review:
+   ```yaml
+   models:
+     reviewer:
+       provider: anthropic
+       model: <model-id>
+     judge:
+       provider: anthropic
+       model: <model-id>
+   comment_language: en
+   ```
 
-```yaml
-models:
-  reviewer:
-    provider: anthropic
-    model: <model-id>
-  judge:
-    provider: anthropic
-    model: <model-id>
-```
+3. Give Kerpeten the key of your provider:
 
-A model takes an optional `max_output_tokens` (1-1000000). Left out, Kerpeten sets no limit of its own: OpenAI and OpenRouter get no limit, and Anthropic, whose API needs one on every request, gets the limit of the model. An Anthropic model behind another `base_url` must have `max_output_tokens`, because the limit of that model is not known: without it the review stops before any model is called. A model on Anthropic's own API that the SDK does not know yet fails on its first request with an error that asks for the same setting.
+   ```sh
+   export ANTHROPIC_API_KEY=<your key>
+   ```
 
-When the final answer of the reviewer or the judge comes back empty or does not fit the expected form, the same request is sent again, up to three times in all. If all three fail, the review ends as before: a reviewer without an answer ends the review with an error, a judge without an answer leaves a `judge_error` on that finding.
+4. Commit your work, then run the review from inside the repository:
 
-Run the review from inside that repository:
+   ```sh
+   kerpeten review --dry-run
+   ```
 
-```sh
-cd /path/to/your-repository
-kerpeten review --dry-run
-```
+The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base.
 
-### From source
+## Models
 
-To work on Kerpeten itself you need [Bun](https://bun.sh) 1.4.5. Install the dependencies once, in this repository:
+| `provider` | What it needs |
+| --- | --- |
+| `anthropic` | `ANTHROPIC_API_KEY` |
+| `openai` | `OPENAI_API_KEY` |
+| `openrouter` | `OPENROUTER_API_KEY` |
+| `chatgpt` | A sign-in with `kerpeten auth login`; the requests count against your ChatGPT plan |
 
-```sh
-bun install
-```
+Another endpoint that speaks the API of one of these providers works too, with `base_url` and `api_key_env`. [Configuration](https://github.com/KerpetenSH/kerpeten/blob/master/docs/configuration.md) tells how.
 
-`scripts/kerpeten.ts` runs the CLI from source, without a build, from any directory:
+## How it works
 
-```sh
-bun /path/to/kerpeten/scripts/kerpeten.ts review --dry-run
-```
+1. **Change.** Kerpeten takes the diff between the base and `HEAD`.
+2. **Reviewer.** The reviewer model reads the diff and the rule files, looks into the repository with its read-only tools and reports findings. Each one names a file, lines, a category, the evidence and a fix.
+3. **Filter.** Findings that point to a file or to lines that do not exist are dropped.
+4. **Judge.** Each finding goes to the judge model in its own call. The judge checks it against the code and labels it: `verified`, `unverified` or `refuted`, with a priority, a nature and the effort of the fix.
+5. **Scorer.** The labels become a score from 0 to 100. The score decides what a posted review would do with the finding: a comment on its line, a line in the summary, or nothing.
 
-`bun run build -- --target linux-x64` writes a standalone binary to `dist/`, which also runs from any directory.
-
-Do not start `src/cli/main.ts` directly from another directory: Bun takes the decorator dialect from the `tsconfig.json` of the working directory, and the CLI needs the `experimentalDecorators` setting of this repository's. The launcher passes it with `--tsconfig-override`; the binary has it compiled in.
+## Commands
 
 | Command | What it does |
 | --- | --- |
@@ -69,76 +105,18 @@ Do not start `src/cli/main.ts` directly from another directory: Bun takes the de
 | `kerpeten self-check` | Checks the build without the network |
 | `kerpeten capabilities` | Lists what the build can reach (git, the file system, other processes) with the permission each one needs, the permission groups, and the harnesses with the permissions they list |
 
-The review is of `HEAD`, but the tools read the files on disk. So `kerpeten review` stops with an error when a tracked file has uncommitted changes, and names the files; commit or stash them first. Untracked files do not matter, because the tools only see files tracked at `HEAD`.
+## Platforms
 
-`--extra-context <path>` gives the reviewer and the judge text from outside the repository, such as a ticket, a design note or a team rule; `--extra-context -` reads it from stdin. The text goes into the message of the reviewer and of every judge call as data, in a block of its own. It must be UTF-8 text of at most 20,000 characters: a source that cannot be read, is not text, is empty or is longer stops the review with an error before any model is called, and nothing is cut. There is no `.kerpeten.yml` setting for it, so a reviewed change cannot pull a file into the review.
+The npm package brings a ready binary for Linux (x64 and arm64, glibc) and for macOS (arm64). npm picks the one for your machine; Node.js 18 or later is needed only for the small launcher that starts it. There is no build yet for Windows, for Intel Macs or for a musl Linux such as Alpine: on those the `kerpeten` command stops with an error that says so.
 
-## ChatGPT plan
+## Documentation
 
-A model with `provider: chatgpt` sends its requests to the OpenAI Responses API with the token of your ChatGPT sign-in, so they count against your ChatGPT plan instead of an API key. It takes a `model` and an optional `effort` (`low`, `medium`, `high`, `xhigh` or `max`), and no `api_key_env`, `base_url` or `max_output_tokens`:
-
-```yaml
-models:
-  reviewer:
-    provider: chatgpt
-    model: <model-id>
-  judge:
-    provider: chatgpt
-    model: <model-id>
-```
-
-| Command | What it does |
-| --- | --- |
-| `kerpeten auth login` | Prints a sign-in address for your browser, waits for the browser to come back to `127.0.0.1` and saves the sign-in |
-| `kerpeten auth status [--models]` | Shows the sign-in; `--models` lists the model ids of your plan |
-| `kerpeten auth logout` | Revokes the sign-in at OpenAI and removes the tokens from this machine; when OpenAI does not confirm the revoke, it keeps the tokens and fails, so that you can run it again |
-
-The sign-in is saved in `$XDG_CONFIG_HOME/kerpeten/auth.json`, or `~/.config/kerpeten/auth.json` when `XDG_CONFIG_HOME` is not set. The directory and the file are readable by you only; the review refuses a file that others can read, and Kerpeten refuses a config directory inside a git repository (a repository's `.env` can set `XDG_CONFIG_HOME`). The access token is refreshed when it is close to expiry. Kerpeten signs in under its own name, Kerpeten.
-
-The review stops with an error and prints no findings when there is no sign-in, when the sign-in cannot be refreshed (run `kerpeten auth login`), or when ChatGPT plan usage refuses a request, also in the middle of an answer. A usage limit points to [ChatGPT settings → Usage](https://chatgpt.com/settings/usage). There is no fallback to another provider.
-
-Every request is streamed and sent with `store: false`. Plan usage does not accept an output token limit, so `max_output_tokens` does not apply to these models.
-
-## Rule files
-
-When the repository root has an `AGENTS.md` or a `CLAUDE.md` tracked at `HEAD`, Kerpeten puts its text into the reviewer's message, as data. The judge does not get it there; it reads the rule lines a finding cites with its tools. Only the text at `HEAD` counts: an untracked rule file is ignored, and a link that leaves the repository is not read and is reported on stderr. When both files have the same text, as when `CLAUDE.md` links to `AGENTS.md`, the text is sent once. A rule file longer than 40,000 characters is cut, and the cut is reported on stderr like a cut diff.
-
-A change that breaks a rule written in these files is a finding with the category `convention`, for example a name that `AGENTS.md` says must be snake_case but that the change writes in camelCase. Its evidence cites the rule line. Rules about how a person or an agent should work, such as which commands to run, are not code rules and are ignored.
-
-## The judge
-
-The candidate filter drops findings whose file or lines do not exist at `HEAD`. Each kept finding then goes to the judge in its own call. When no finding is left after the filter, because the reviewer reported none or the filter dropped them all, the judge is not called.
-
-The judge has its own limits beside the reviewer's `max_tool_calls` and `max_duration_minutes`, so neither model can spend the other's share. Neither model has a tool call limit unless one is set: `max_tool_calls` (1-1000) for the reviewer, `max_judge_tool_calls` for the judge. Both time limits are 60 minutes when left out; they are there to end a stuck run, not to cut the work short. All of them are optional:
-
-```yaml
-limits:
-  max_judge_tool_calls: 15            # tool calls per judge call, 1-1000; left out, there is no limit
-  max_judge_parallel: 4               # judge calls at the same time, 1-16; 1 runs them one after another
-  max_judge_duration_minutes: 60      # time for the whole judge stage, 1-360; 60 when left out
-```
-
-The judge's time starts when the judge stage starts, so the longest run is the reviewer's time plus the judge's. When a judge limit ends the stage, the review counts as partial and the findings left unjudged keep a `judge_error`.
-
-## Output
-
-Each finding shows its place, category, title, body, `fix` and evidence, then the judge's `verdict`, `priority`, `nature`, `fix_effort` and `rationale`, the `score` (0-100) and the `action`: `inline` for a comment on its line, `summary` for the summary comment, or `stored` for the run record only. The `thresholds` in `.kerpeten.yml` set the scores for `inline` and `summary`. A finding the judge could not judge shows its `judge_error` instead of the labels and gets `stored`; the command still exits with 0. Nothing is posted in a dry run, so the action only tells what a posted review would do.
-
-The `fix` is the reviewer's note on how to fix the finding, in one to three sentences, or what has to be checked or decided when the fix is not clear. The judge says in its `rationale` when the note is wrong; the note does not change the verdict or the score.
-
-The usage is reported per role: a `reviewer` entry, and a `judge` entry only when the judge ran, which is the sum of all judge calls. When the change is empty, no model runs and the usage list is empty. `--json` prints `{ "findings": [...], "usage": [...] }` with the same fields. A limit that ends the reviewer early and a limit that ends the judge stage are reported on stderr as separate lines, each with its reason, also with `--json`.
-
-## Development
-
-```sh
-bun run check
-bun run build -- --target linux-x64
-```
-
-`check` runs the linter, the type check, the tests and the source layout rules. `build` writes a standalone binary to `dist/`; the targets are `linux-x64`, `linux-arm64` and `darwin-arm64`.
-
-`bun run npm-packages` writes the npm packages to `dist/npm/`: the `kerpeten` package with the launcher, and one `@kerpetensh/kerpeten-<target>` package with the binary of each target. `bun run npm-smoke` installs them with npm into an empty directory and runs the installed command. [RELEASING.md](RELEASING.md) tells how a version gets to npm.
+- [Configuration](https://github.com/KerpetenSH/kerpeten/blob/master/docs/configuration.md): models, keys, other endpoints, the comment language, limits and thresholds
+- [Reviewing](https://github.com/KerpetenSH/kerpeten/blob/master/docs/reviewing.md): what is reviewed, extra context, rule files, the judge and the output
+- [ChatGPT plan](https://github.com/KerpetenSH/kerpeten/blob/master/docs/chatgpt-plan.md): the sign-in and how plan usage behaves
+- [Development](https://github.com/KerpetenSH/kerpeten/blob/master/docs/development.md): running from source, the checks and the builds
+- [Releasing](https://github.com/KerpetenSH/kerpeten/blob/master/RELEASING.md): how a version gets to npm
 
 ## License
 
-MIT, see [LICENSE](LICENSE). Written by LibirSoft.
+MIT, see [LICENSE](https://github.com/KerpetenSH/kerpeten/blob/master/LICENSE). Written by LibirSoft.
