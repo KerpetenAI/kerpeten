@@ -320,6 +320,29 @@ describe("kerpeten init", () => {
     expect(existsSync(join(dir, ".kerpeten.yml"))).toBe(false);
   });
 
+  test("a .kerpeten.yml that appears while the questions are asked is not overwritten and ends init with 1", async () => {
+    const dir = repo();
+    const given = answers("2", "claude-test-1", "y", "en");
+
+    const stdin = () => {
+      writeFileSync(join(dir, ".kerpeten.yml"), "raced: in\n");
+
+      return given.stdin();
+    };
+
+    const result = await init(setup(dir, given, { stdin }));
+
+    expect(result.code).toBe(ExitCode.FAILED);
+
+    expect(result.err).toBe(
+      `kerpeten init: ${join(dir, ".kerpeten.yml")} already exists; init does not change it. Edit it by hand, or remove it and run \`kerpeten init\` again`,
+    );
+
+    expect(result.out).not.toContain("Wrote");
+    expect(result.out).not.toContain("Setup check:");
+    expect(configText(dir)).toBe("raced: in\n");
+  });
+
   test("standard input that ends before the last answer is a usage error and writes no file", async () => {
     const dir = repo();
     const result = await init(setup(dir, answers("2", "claude-test-1", "y")));
