@@ -27,13 +27,13 @@ describe("change flow step", () => {
       baseSha: base,
       headSha: head,
       changedFiles: ["src/a.ts"],
-      promptVersion: "v2",
+      promptVersion: "v3",
       start: 42,
       patch: expect.stringContaining("x / y"),
       title: "feature",
       description: expect.stringContaining("It divides."),
       known: [],
-      judgePromptVersion: "v2",
+      judgePromptVersion: "v3",
     });
 
     expect(Object.keys(added)).toEqual(["change"]);
@@ -71,7 +71,7 @@ describe("change flow step", () => {
         changedFiles: [],
         dropped: {},
         clipped: 0,
-        promptVersion: "v2",
+        promptVersion: "v3",
         findings: [],
         partial: false,
         usage: [],

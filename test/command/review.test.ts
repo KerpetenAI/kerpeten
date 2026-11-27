@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { PermissionGroups } from "../../src/capability/PermissionGroups.ts";
@@ -7,7 +8,7 @@ import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
 import type { AiSdkSettings } from "../../src/harness-kit/ai-sdk/index.ts";
 import { ExitCode, PermissionGroupSet } from "../../src/harness-kit/index.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
-import { mockClient } from "../harness-kit/harness-kit-utils.ts";
+import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
 
 const SECRET = "sk-test-secret-value-123";
 
@@ -30,11 +31,11 @@ afterEach(() => {
   mock.restore();
 });
 
-function repo(config: string | null = CONFIG): string {
+function repo(config: string | null = CONFIG, baseFiles: Record<string, string> = {}): string {
   const dir = tempRepo("kerpeten-cli-review-");
 
   dirs.push(dir);
-  write(dir, { "src/a.ts": "export const a = 1;\n" });
+  write(dir, { "src/a.ts": "export const a = 1;\n", ...baseFiles });
 
   if (config !== null) write(dir, { ".kerpeten.yml": config });
 
@@ -166,7 +167,7 @@ describe("kerpeten review --dry-run", () => {
     ] as never);
 
     expect(result.code).toBe(0);
-    expect(result.out).toMatch(/^review: [0-9a-f]{12}\.\.[0-9a-f]{12}, 1 changed files, prompt reviewer v2$/m);
+    expect(result.out).toMatch(/^review: [0-9a-f]{12}\.\.[0-9a-f]{12}, 1 changed files, prompt reviewer v3$/m);
     expect(result.out).toContain("findings: 1");
     expect(result.out).toContain("usage: reviewer anthropic/mock-model: 3 calls, 300 input tokens, 30 output tokens");
     expect(result.out).toContain("tool calls: 5");
@@ -196,6 +197,52 @@ describe("kerpeten review --dry-run", () => {
       '"final answer" command=review harness=reviewer ok=true ms=N attempts=1 input_tokens=100 output_tokens=10',
       '"reviewer ended" command=review completed=true findings=1 steps=2 tool_calls=5 ms=N',
     ]);
+  });
+
+  test("gives the project's rule files to the reviewer only, and reports a cut and a link that leaves the repository", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "kerpeten-cli-outside-"));
+
+    dirs.push(outside);
+    writeFileSync(join(outside, "rules.md"), "outside rule\n");
+
+    const agents = `Exported names are snake_case.\n${"x".repeat(40_000)}\nthe last rule\n`;
+    const dir = repo(CONFIG, { "AGENTS.md": agents });
+
+    symlinkSync(join(outside, "rules.md"), join(dir, "CLAUDE.md"));
+    commit(dir, "link the rules");
+
+    const labels = {
+      verdict: "verified",
+      priority: "P1",
+      nature: "edge_case",
+      fix_effort: "easy",
+      rationale: "y is never checked",
+      evidence: [{ location: "src/a.ts:2" }],
+    };
+
+    const result = await run(dir, ["review", "--dry-run", "--base", "main", "--json"], undefined, undefined, [
+      { text: "done" },
+      { text: JSON.stringify(labels) },
+    ]);
+
+    expect(result.code).toBe(0);
+
+    const reviewerPrompt = promptText(result.reviewerCalls[0]);
+    const judgePrompt = promptText(result.judgeCalls[0]);
+
+    expect(reviewerPrompt).toContain("1\\tExported names are snake_case.");
+
+    expect(reviewerPrompt).toContain(
+      "Project rule file AGENTS.md (each line starts with its number and a tab; cut at 40000",
+    );
+
+    expect(reviewerPrompt).not.toContain("the last rule");
+    expect(reviewerPrompt).not.toContain("outside rule");
+    expect(judgePrompt).toContain("BEGIN DATA finding");
+    expect(judgePrompt).not.toContain("snake_case");
+    expect(judgePrompt).not.toContain("Project rule file");
+    expect(result.err).toMatch(/"reviewer input shortened" .*note="AGENTS\.md cut at 40000 characters"/);
+    expect(result.err).toMatch(/"rule file not read" .*file=CLAUDE\.md reason="path is outside the repository"/);
   });
 
   test("a model that gives no result is a failure, not an empty review", async () => {

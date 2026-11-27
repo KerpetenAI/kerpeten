@@ -22,6 +22,7 @@ import { Harnesses } from "../harnesses/Harnesses.ts";
 import { JudgePool } from "../harnesses/judge/JudgePool.ts";
 import { Prompts } from "../harnesses/Prompts.ts";
 import { CandidateFilter } from "../harnesses/review/CandidateFilter.ts";
+import { RuleFiles } from "../harnesses/review/RuleFiles.ts";
 import { Scorer } from "../layer/scoring/Scorer.ts";
 import { Logger } from "../log/Logger.ts";
 import { GlobTool } from "../tools/glob/GlobTool.ts";
@@ -103,6 +104,7 @@ export class KerpetenApp {
     RipgrepSearch,
     SearchTimer,
     CandidateFilter,
+    RuleFiles,
   ];
 
   public static async run(

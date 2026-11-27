@@ -87,6 +87,12 @@ The review stops with an error and prints no findings when there is no sign-in, 
 
 Every request is streamed and sent with `store: false`. Plan usage does not accept an output token limit, so `max_output_tokens` does not apply to these models.
 
+## Rule files
+
+When the repository root has an `AGENTS.md` or a `CLAUDE.md` tracked at `HEAD`, Kerpeten puts its text into the reviewer's message, as data. The judge does not get it there; it reads the rule lines a finding cites with its tools. Only the text at `HEAD` counts: an untracked rule file is ignored, and a link that leaves the repository is not read and is reported on stderr. When both files have the same text, as when `CLAUDE.md` links to `AGENTS.md`, the text is sent once. A rule file longer than 40,000 characters is cut, and the cut is reported on stderr like a cut diff.
+
+A change that breaks a rule written in these files is a finding with the category `convention`, for example a name that `AGENTS.md` says must be snake_case but that the change writes in camelCase. Its evidence cites the rule line. Rules about how a person or an agent should work, such as which commands to run, are not code rules and are ignored.
+
 ## The judge
 
 The candidate filter drops findings whose file or lines do not exist at `HEAD`. Each kept finding then goes to the judge in its own call. When no finding is left after the filter, because the reviewer reported none or the filter dropped them all, the judge is not called.

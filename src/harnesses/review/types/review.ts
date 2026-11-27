@@ -16,12 +16,35 @@ export interface DiscussedFinding {
   readonly reason?: string;
 }
 
+/** A rule file of the repository root as the reviewer gets it, with the other rule files that have the same text. */
+export interface RuleFile {
+  readonly name: string;
+  readonly sameText: readonly string[];
+  readonly text: string;
+}
+
+/** A rule file that is tracked at HEAD but was not read, and why. */
+export interface SkippedRuleFile {
+  readonly name: string;
+  readonly reason: string;
+}
+
+export interface RuleFileSet {
+  readonly files: readonly RuleFile[];
+  readonly skipped: readonly SkippedRuleFile[];
+}
+
+export type RuleFileText =
+  | { readonly ok: true; readonly text: string }
+  | { readonly ok: false; readonly reason: string };
+
 export interface ReviewerRequest {
   readonly title: string;
   readonly description: string;
   readonly patch: string;
   readonly changedFiles: readonly string[];
   readonly known: readonly DiscussedFinding[];
+  readonly rules: readonly RuleFile[];
   readonly commentLanguage: string;
   readonly promptVersion: string;
 }
@@ -50,6 +73,7 @@ export interface ReviewerContextSpec {
   readonly MAX_TEXT_CHARS: number;
   readonly MAX_CHANGED_FILES: number;
   readonly MAX_CHANGED_FILES_CHARS: number;
+  readonly MAX_RULE_FILE_CHARS: number;
 }
 
 export type DropReason = "bad_path" | "no_file" | "unreadable_file" | "bad_range" | "line_outside" | "blank_range";
