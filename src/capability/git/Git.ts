@@ -25,6 +25,8 @@ export class Git extends ProcessCapability {
 
   private static readonly SHA = /^[0-9a-f]{40}$/;
 
+  private static readonly NEW_IN_INDEX = /^A[ MD] /;
+
   @RunValue("repo")
   private readonly repo!: string;
 
@@ -131,10 +133,21 @@ export class Git extends ProcessCapability {
       .join("\n\n");
   }
 
-  public async hasLocalChanges(): Promise<boolean> {
-    const out = await this.output(["status", "--porcelain", "--untracked-files=normal"]);
+  public async changedTrackedFiles(): Promise<string[]> {
+    const out = await this.text([
+      "status",
+      "--porcelain=v1",
+      "-z",
+      "--no-renames",
+      "--untracked-files=no",
+      "--ignore-submodules=all",
+    ]);
 
-    return out.length > 0;
+    return out
+      .split("\0")
+      .filter((entry) => entry.length > 3 && !Git.NEW_IN_INDEX.test(entry))
+      .map((entry) => entry.slice(3))
+      .sort();
   }
 
   public async trackedFiles(commit: string): Promise<string[]> {

@@ -93,7 +93,7 @@ describe("repository helpers", () => {
 
     const before = { bytes: readFileSync(index), mtime: statSync(index).mtimeMs };
 
-    expect(await (await git(dir)).hasLocalChanges()).toBe(false);
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual([]);
     expect({ bytes: readFileSync(index), mtime: statSync(index).mtimeMs }).toEqual(before);
   });
 
@@ -114,19 +114,25 @@ describe("repository helpers", () => {
     );
   });
 
-  test("finds the root, the branch, the messages and local changes", async () => {
+  test("finds the root, the branch, the messages and the changed tracked files", async () => {
     const { dir, base, head } = repo();
 
     expect(await root(join(dir, "src"))).toBe(sh(dir, ["rev-parse", "--show-toplevel"]));
     expect(await (await git(dir)).currentBranch()).toBe("main");
     expect(await (await git(dir)).commitMessages(base, head)).toBe("second\n\nbody line");
-    expect(await (await git(dir)).hasLocalChanges()).toBe(false);
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual([]);
     writeFileSync(join(dir, "notes.txt"), "untracked\n");
-    expect(await (await git(dir)).hasLocalChanges()).toBe(true);
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual([]);
+    sh(dir, ["add", "notes.txt"]);
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual([]);
+    sh(dir, ["rm", "-q", "--cached", "notes.txt"]);
     rmSync(join(dir, "notes.txt"));
-    expect(await (await git(dir)).hasLocalChanges()).toBe(false);
     writeFileSync(join(dir, "src/x.ts"), "dirty\n");
-    expect(await (await git(dir)).hasLocalChanges()).toBe(true);
+    rmSync(join(dir, "src/a b ü.ts"));
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual(["src/a b ü.ts", "src/x.ts"]);
+    sh(dir, ["add", "src/x.ts"]);
+    expect(await (await git(dir)).changedTrackedFiles()).toEqual(["src/a b ü.ts", "src/x.ts"]);
+    sh(dir, ["checkout", "-q", "HEAD", "--", "."]);
     expect(await (await git(dir)).defaultRemoteBranch()).toBeUndefined();
     sh(dir, ["update-ref", "refs/remotes/origin/trunk", head]);
     sh(dir, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"]);

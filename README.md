@@ -55,6 +55,8 @@ Do not start `src/cli/main.ts` directly from another directory: Bun takes the de
 | `kerpeten self-check` | Checks the build without the network |
 | `kerpeten capabilities` | Lists what the build can reach (git, the file system, other processes) with the permission each one needs, the permission groups, and the harnesses with the permissions they list |
 
+The review is of `HEAD`, but the tools read the files on disk. So `kerpeten review` stops with an error when a tracked file has uncommitted changes, and names the files; commit or stash them first. Untracked files do not matter, because the tools only see files tracked at `HEAD`.
+
 ## ChatGPT plan
 
 A model with `provider: chatgpt` sends its requests to the OpenAI Responses API with the token of your ChatGPT sign-in, so they count against your ChatGPT plan instead of an API key. It takes a `model` and an optional `effort` (`low`, `medium`, `high`, `xhigh` or `max`), and no `api_key_env`, `base_url` or `max_output_tokens`:
@@ -85,13 +87,13 @@ Every request is streamed and sent with `store: false`. Plan usage does not acce
 
 The candidate filter drops findings whose file or lines do not exist at `HEAD`. Each kept finding then goes to the judge in its own call. When no finding is left after the filter, because the reviewer reported none or the filter dropped them all, the judge is not called.
 
-The judge has its own limits beside the reviewer's `max_tool_calls` and `max_duration_minutes`, so neither model can spend the other's share. Neither model has a tool call limit unless one is set: `max_tool_calls` (1-1000) for the reviewer, `max_judge_tool_calls` for the judge. All of them are optional:
+The judge has its own limits beside the reviewer's `max_tool_calls` and `max_duration_minutes`, so neither model can spend the other's share. Neither model has a tool call limit unless one is set: `max_tool_calls` (1-1000) for the reviewer, `max_judge_tool_calls` for the judge. Both time limits are 60 minutes when left out; they are there to end a stuck run, not to cut the work short. All of them are optional:
 
 ```yaml
 limits:
   max_judge_tool_calls: 15            # tool calls per judge call, 1-1000; left out, there is no limit
   max_judge_parallel: 4               # judge calls at the same time, 1-16; 1 runs them one after another
-  max_judge_duration_minutes: 10      # time for the whole judge stage, 1-360
+  max_judge_duration_minutes: 60      # time for the whole judge stage, 1-360; 60 when left out
 ```
 
 The judge's time starts when the judge stage starts, so the longest run is the reviewer's time plus the judge's. When a judge limit ends the stage, the review counts as partial and the findings left unjudged keep a `judge_error`.
