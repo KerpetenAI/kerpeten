@@ -1,6 +1,7 @@
 {
   "name": "kerpeten-harness",
   "version": "0.1.0",
+  "description": "A code review CLI: a reviewer model finds defects in a change, a judge model checks each finding.",
   "author": "LibirSoft",
   "license": "MIT",
   "private": true,
@@ -18,7 +19,9 @@
     "blank-lines": "bun scripts/blank-lines.ts",
     "layout": "bun scripts/layout.ts",
     "gen-types": "bunx openapi-typescript@7.13.0 openapi.json --root-types --root-types-no-schema-prefix -o src/api/types/api.generated.ts",
-    "build": "bun scripts/build.ts"
+    "build": "bun scripts/build.ts",
+    "npm-packages": "bun scripts/npm-packages.ts",
+    "npm-smoke": "bun scripts/npm-smoke.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.107",
