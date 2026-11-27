@@ -477,6 +477,7 @@ describe("provider wiring", () => {
     expect(anthropic.languageModel({ ...elsewhere, maxOutputTokens: 8000 })).toBeDefined();
     expect(anthropic.languageModel(settings)).toBeDefined();
     expect(anthropic.languageModel({ ...settings, baseUrl: anthropic.defaultBaseUrl })).toBeDefined();
+    expect(anthropic.languageModel({ ...settings, baseUrl: `${anthropic.defaultBaseUrl}/` })).toBeDefined();
     expect(captured.length).toBe(0);
   });
 

@@ -17,6 +17,10 @@ export class AnthropicAdapter extends ProviderAdapter {
     super(defaultBaseUrl);
   }
 
+  private static withoutEndSlash(url: string): string {
+    return url.replace(/\/+$/, "");
+  }
+
   public override cacheMarker(_settings: ModelSettings): CacheMarker {
     return { anthropic: { cacheControl: { type: "ephemeral" } } };
   }
@@ -26,7 +30,9 @@ export class AnthropicAdapter extends ProviderAdapter {
   }
 
   public override languageModel(settings: ModelSettings): Exclude<LanguageModel, string> {
-    const elsewhere = settings.baseUrl !== undefined && settings.baseUrl !== this.defaultBaseUrl;
+    const elsewhere =
+      settings.baseUrl !== undefined &&
+      AnthropicAdapter.withoutEndSlash(settings.baseUrl) !== AnthropicAdapter.withoutEndSlash(this.defaultBaseUrl);
 
     if (elsewhere && settings.maxOutputTokens === undefined) {
       throw new Error(
