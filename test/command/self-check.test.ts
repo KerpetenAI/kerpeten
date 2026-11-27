@@ -14,7 +14,7 @@ describe("self-check", () => {
     ]);
 
     expect(problems).toEqual([]);
-    expect(lines.join("\n")).toMatch(/self-check: reviewer prompt v3 embedded, sha256 [0-9a-f]{64}/);
+    expect(lines.join("\n")).toMatch(/self-check: reviewer prompt v4 embedded, sha256 [0-9a-f]{64}/);
 
     expect(lines).toContain("self-check: model SDK round trip passed: tool call, tool result and structured output");
   });

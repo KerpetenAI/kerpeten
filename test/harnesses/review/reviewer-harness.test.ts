@@ -67,6 +67,7 @@ const finding: ReviewerFinding = {
   category: "bug",
   title: "Sıfıra bölme",
   body: "b 0 olabilir",
+  fix: "b 0 ise hata ver.",
   evidence: [{ location: "src/a.ts:1" }],
 };
 
@@ -119,8 +120,8 @@ describe("prompt files", () => {
 
   test("the judge prompt is a locked role with its own current version", () => {
     expect(prompts.roles).toEqual(["reviewer", "judge"]);
-    expect(prompts.current.judge).toBe("v3");
-    expect(lock.judge?.v3).toBeDefined();
+    expect(prompts.current.judge).toBe("v4");
+    expect(lock.judge?.v4).toBeDefined();
 
     const rendered = prompts.render("judge", "v1", { comment_language: "tr" });
 
@@ -370,6 +371,15 @@ describe("reviewer output", () => {
     }
 
     expect(reviewerOutput.safeParse({ findings: [{ ...finding, category: "style" }] }).success).toBe(false);
+  });
+
+  test("needs a fix note that is not empty", () => {
+    const { fix: _fix, ...withoutFix } = finding;
+
+    expect(reviewerOutput.safeParse({ findings: [finding] }).success).toBe(true);
+    expect(reviewerOutput.safeParse({ findings: [withoutFix] }).success).toBe(false);
+    expect(reviewerOutput.safeParse({ findings: [{ ...finding, fix: " \n" }] }).success).toBe(false);
+    expect(reviewerOutput.safeParse({ findings: [{ ...finding, fix: 1 }] }).success).toBe(false);
   });
 });
 

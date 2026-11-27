@@ -10,6 +10,7 @@ const finding = (start: number, end: number): ReviewerFinding => ({
   category: "bug",
   title: "t",
   body: "b",
+  fix: "f",
   evidence: [{ location: "src/a.ts:1" }],
 });
 

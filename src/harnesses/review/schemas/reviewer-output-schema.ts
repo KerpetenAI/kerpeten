@@ -21,6 +21,7 @@ export const reviewerFinding = z.strictObject({
   category: z.enum([...BACKEND_CATEGORIES, ...CATEGORIES_NOT_IN_BACKEND]),
   title: z.string(),
   body: z.string(),
+  fix: z.string().refine((text) => text.trim() !== "", "the fix is empty"),
   evidence: z.array(evidence).min(1),
 });
 

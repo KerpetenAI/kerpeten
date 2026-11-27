@@ -17,6 +17,7 @@ const base: ReviewerFinding = {
   category: "bug",
   title: "A",
   body: "y can be 0",
+  fix: "Throw when y is 0.",
   evidence: [{ location: "src/a.ts:2" }],
 };
 

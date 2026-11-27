@@ -2,9 +2,11 @@ import { Service } from "@asenajs/ioc";
 import judgeV1 from "../../prompts/judge/v1.md" with { type: "text" };
 import judgeV2 from "../../prompts/judge/v2.md" with { type: "text" };
 import judgeV3 from "../../prompts/judge/v3.md" with { type: "text" };
+import judgeV4 from "../../prompts/judge/v4.md" with { type: "text" };
 import reviewerV1 from "../../prompts/reviewer/v1.md" with { type: "text" };
 import reviewerV2 from "../../prompts/reviewer/v2.md" with { type: "text" };
 import reviewerV3 from "../../prompts/reviewer/v3.md" with { type: "text" };
+import reviewerV4 from "../../prompts/reviewer/v4.md" with { type: "text" };
 import type { PromptRole, PromptVariables } from "./types/harnesses.ts";
 
 @Service("kerpeten:prompts")
@@ -14,13 +16,13 @@ export class Prompts {
   public readonly roles: readonly PromptRole[] = ["reviewer", "judge"];
 
   public readonly embedded: Readonly<Record<PromptRole, Readonly<Record<string, string>>>> = {
-    reviewer: { v1: reviewerV1, v2: reviewerV2, v3: reviewerV3 },
-    judge: { v1: judgeV1, v2: judgeV2, v3: judgeV3 },
+    reviewer: { v1: reviewerV1, v2: reviewerV2, v3: reviewerV3, v4: reviewerV4 },
+    judge: { v1: judgeV1, v2: judgeV2, v3: judgeV3, v4: judgeV4 },
   };
 
   public readonly current: Readonly<Record<PromptRole, string>> = {
-    reviewer: "v3",
-    judge: "v3",
+    reviewer: "v4",
+    judge: "v4",
   };
 
   public template(role: PromptRole, version: string): string {

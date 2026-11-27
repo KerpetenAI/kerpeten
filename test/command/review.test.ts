@@ -54,6 +54,7 @@ const finding = {
   category: "bug",
   title: "Division by zero",
   body: "y can be 0",
+  fix: "Throw when y is 0.",
   evidence: [{ location: "src/a.ts:2", note: "no guard" }],
 };
 
@@ -169,7 +170,7 @@ describe("kerpeten review --dry-run", () => {
     ] as never);
 
     expect(result.code).toBe(0);
-    expect(result.out).toMatch(/^review: [0-9a-f]{12}\.\.[0-9a-f]{12}, 1 changed files, prompt reviewer v3$/m);
+    expect(result.out).toMatch(/^review: [0-9a-f]{12}\.\.[0-9a-f]{12}, 1 changed files, prompt reviewer v4$/m);
     expect(result.out).toContain("findings: 1");
     expect(result.out).toContain("usage: reviewer anthropic/mock-model: 3 calls, 300 input tokens, 30 output tokens");
     expect(result.out).toContain("tool calls: 5");
@@ -445,6 +446,7 @@ describe("kerpeten review --dry-run", () => {
       ...finding,
       title: "Division\u001b[2J by zero\u009b31m",
       body: "y can be 0\u0007\u007f",
+      fix: "Throw\u001b[1m when y is 0.\u0085",
       evidence: [{ location: "src/a.ts:2\u001b]0;pwned\u0007", note: "no\u0085 guard\u001b[0m" }],
     };
 
@@ -464,6 +466,7 @@ describe("kerpeten review --dry-run", () => {
     expect(text.code).toBe(0);
     expect(text.out).toContain("- src/a.ts:2-2 [bug] Division�[2J by zero�31m");
     expect(text.out).toContain("  evidence src/a.ts:2�]0;pwned�: no� guard�[0m");
+    expect(text.out).toContain("  fix Throw�[1m when y is 0.�");
     expect(control(text.out)).toBe(false);
     expect(text.err).toContain("candidate finding dropped");
     expect(control(text.err)).toBe(false);
@@ -502,7 +505,7 @@ describe("kerpeten review --dry-run", () => {
     expect(text.code).toBe(0);
 
     expect(text.out).toContain(
-      "- src/a.ts:2-2 [bug] Division by zero\n  verdict verified, priority P1, nature edge_case, fix_effort easy, score 50, action summary\n  y can be 0\n  rationale y is�[2J never checked",
+      "- src/a.ts:2-2 [bug] Division by zero\n  verdict verified, priority P1, nature edge_case, fix_effort easy, score 50, action summary\n  y can be 0\n  fix Throw when y is 0.\n  rationale y is�[2J never checked",
     );
 
     expect(text.out).toMatch(
@@ -516,6 +519,8 @@ describe("kerpeten review --dry-run", () => {
 
     const json = await run(repo(config), ["review", "--dry-run", "--base", "main", "--json"], env, reviewer, judge);
     const printed = JSON.parse(json.out);
+
+    expect(printed.findings.map((item: { fix: string }) => item.fix)).toEqual([finding.fix, second.fix]);
 
     expect(json.code).toBe(0);
 
