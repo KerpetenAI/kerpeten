@@ -50,6 +50,8 @@ describe("cli", () => {
     expect(usage).toContain("review permission group: at most one of --all, --read; --all when none is given");
     expect(usage).toContain("      Review the change between the base branch and HEAD");
     expect(usage).toContain("      Check this build without the network");
+    expect(usage).toContain("  kerpeten init\n");
+    expect(usage).toContain("      Ask for the provider and model of the reviewer and of the judge");
     expect(usage).not.toMatch(/\b(eval|collect|submit)\b|--out/);
   });
 
@@ -69,6 +71,8 @@ describe("cli", () => {
     ["two permission group flags", ["review", "--dry-run", "--all", "--read"]],
     ["a permission group flag given a value", ["review", "--read=yes"]],
     ["a positional given to self-check", ["self-check", "contract"]],
+    ["a positional given to init", ["init", "here"]],
+    ["an option given to init", ["init", "--provider", "chatgpt"]],
   ];
 
   for (const [name, argv] of usageErrors) {

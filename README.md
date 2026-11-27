@@ -50,20 +50,16 @@ findings: 4
 
    It also needs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) on your `PATH`; the models search your code with it.
 
-2. Add a `.kerpeten.yml` to the root of the repository you want to review:
+2. Run `kerpeten init` inside the repository you want to review:
 
-   ```yaml
-   models:
-     reviewer:
-       provider: anthropic
-       model: <model-id>
-     judge:
-       provider: anthropic
-       model: <model-id>
-   comment_language: en
+   ```sh
+   cd /path/to/your-repository
+   kerpeten init
    ```
 
-3. Give Kerpeten the key of your provider:
+   It asks for the provider and the model of the reviewer and of the judge and for the language of the review comments. Then it writes `.kerpeten.yml` to the root of the repository and tells what is still missing: ripgrep, a key or a sign-in.
+
+3. Give Kerpeten the key of your provider, or sign in with `kerpeten auth login` when you chose your ChatGPT plan:
 
    ```sh
    export ANTHROPIC_API_KEY=<your key>
@@ -100,6 +96,7 @@ Another endpoint that speaks the API of one of these providers works too, with `
 
 | Command | What it does |
 | --- | --- |
+| `kerpeten init` | Asks for the models and the comment language, writes `.kerpeten.yml` and checks the setup |
 | `kerpeten review --dry-run [--base <rev>] [--context-file <path>] [--extra-context <path or ->] [--json]` | Reviews the change and prints the findings |
 | `kerpeten auth login \| logout \| status [--models]` | Signs in with ChatGPT for models with `provider: chatgpt` |
 | `kerpeten self-check` | Checks the build without the network |

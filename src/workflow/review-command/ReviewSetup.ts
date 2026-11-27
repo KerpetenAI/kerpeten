@@ -7,6 +7,7 @@ import { ChatGptTokens } from "../../capability/chatgpt/ChatGptTokens.ts";
 import { ConfigLoader } from "../../capability/config/ConfigLoader.ts";
 import type { ModelConfig } from "../../capability/config/types/config.ts";
 import { GitRoot } from "../../capability/git/GitRoot.ts";
+import { RipgrepSearch } from "../../capability/repo/RipgrepSearch.ts";
 import { UsageError } from "../../harness-kit/index.ts";
 import type { PromptRole, ProviderLlm } from "../../harnesses/types/harnesses.ts";
 import { errorMessage } from "../../text/text-utils.ts";
@@ -71,7 +72,7 @@ export class ReviewSetup {
           reviewerClient: this.client("reviewer", reviewer, reviewerKey, zdr, plan),
           judgeClient: this.client("judge", judge, judgeKey, zdr, plan),
           plan,
-          pathEnv: this.env.PATH ?? "/usr/bin:/bin",
+          pathEnv: this.env.PATH ?? RipgrepSearch.FALLBACK_PATH,
         },
       };
     } catch (error) {

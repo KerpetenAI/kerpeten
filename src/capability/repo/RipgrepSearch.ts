@@ -12,6 +12,11 @@ import type { RipgrepOutcome, RipgrepQuery } from "./types/repo.ts";
   scope: "run",
 })
 export class RipgrepSearch extends ProcessCapability {
+  public static readonly COMMAND = "rg";
+
+  /** The PATH ripgrep is searched on when the environment has none. */
+  public static readonly FALLBACK_PATH = "/usr/bin:/bin";
+
   @Use(RepoJail)
   private readonly jail!: RepoJail;
 
@@ -20,6 +25,11 @@ export class RipgrepSearch extends ProcessCapability {
 
   @RunValue("pathEnv")
   private readonly pathEnv!: string;
+
+  /** Whether ripgrep is found on `pathEnv`, the PATH a review gives it; nothing is run. */
+  public static onPath(pathEnv: string): boolean {
+    return Bun.which(RipgrepSearch.COMMAND, { PATH: pathEnv }) !== null;
+  }
 
   private static rgArgs(query: RipgrepQuery): string[] {
     return [
@@ -55,6 +65,6 @@ export class RipgrepSearch extends ProcessCapability {
   }
 
   protected processSettings(): ProcessSettings {
-    return { command: "rg", fixedArgs: [], cwd: this.jail.root, env: { PATH: this.pathEnv } };
+    return { command: RipgrepSearch.COMMAND, fixedArgs: [], cwd: this.jail.root, env: { PATH: this.pathEnv } };
   }
 }

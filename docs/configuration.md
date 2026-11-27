@@ -1,6 +1,8 @@
 # Configuration
 
-Kerpeten reads its settings from `.kerpeten.yml` in the root of the repository you review. Only `models` is required:
+Kerpeten reads its settings from `.kerpeten.yml` in the root of the repository you review. `kerpeten init` asks a few questions and writes the file for you; it never changes a `.kerpeten.yml` that is already there. Commit the file so that everyone on the project reviews with the same settings.
+
+You can also write the file by hand. Only `models` is required:
 
 ```yaml
 models:
