@@ -89,6 +89,10 @@ export class ChangeStep extends FlowStepBase {
       }));
     }
 
+    const uncommitted = await git.changedTrackedFiles();
+
+    if (uncommitted.length > 0) throw new ReviewInputError(ChangeStep.uncommittedMessage(uncommitted));
+
     let extraContext: string | undefined;
 
     if (state.extraContext !== undefined) {
@@ -98,10 +102,6 @@ export class ChangeStep extends FlowStepBase {
 
       extraContext = read.text;
     }
-
-    const uncommitted = await git.changedTrackedFiles();
-
-    if (uncommitted.length > 0) throw new ReviewInputError(ChangeStep.uncommittedMessage(uncommitted));
 
     const changes = await this.diff.between(baseSha, head, config.ignore);
     const changedFiles = GitDiff.changedPaths(changes.files);
