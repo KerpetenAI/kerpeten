@@ -52,9 +52,9 @@ describe("config", () => {
 
     expect(config.limits).toEqual({
       max_inline_comments: 10,
-      max_duration_minutes: 20,
+      max_duration_minutes: 60,
       max_judge_parallel: 4,
-      max_judge_duration_minutes: 10,
+      max_judge_duration_minutes: 60,
     });
 
     expect(config.ignore).toEqual(["**/*.lock", "**/generated/**"]);
@@ -77,7 +77,7 @@ describe("config", () => {
     expect(config.limits).toMatchObject({
       max_judge_parallel: 1,
       max_judge_duration_minutes: 3,
-      max_duration_minutes: 20,
+      max_duration_minutes: 60,
     });
 
     expect(ok(`${MODELS}limits: { max_judge_parallel: 16 }\n`).limits.max_judge_parallel).toBe(16);
