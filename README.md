@@ -4,21 +4,22 @@ The Kerpeten code review CLI. It reads the change between a base branch and `HEA
 
 This build only reviews locally: `review` needs `--dry-run`, and nothing is posted to a merge request or sent to the backend yet.
 
+## Install
+
+```sh
+npm install -g kerpeten
+```
+
+The package brings a ready binary for Linux (x64 and arm64, glibc) and for macOS (arm64). npm picks the one for your machine; Node.js 18 or later is needed only for the small launcher that starts it. There is no build yet for Windows, for Intel Macs or for a musl Linux such as Alpine: on those the `kerpeten` command stops with an error that says so.
+
 ## Requirements
 
-- [Bun](https://bun.sh) 1.4.5
 - [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) on `PATH`
 - An API key for the reviewer's provider and one for the judge's provider: `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`. The reviewer and the judge can use different providers and models; when they share a provider, one key serves both. A model with `api_key_env` reads its key from that variable instead. A model with a `base_url` or a key name other than the provider default must be listed in `KERPETEN_TRUSTED_ENDPOINTS` as `<KEY_NAME>=<base_url or provider>`. The command checks the key and the endpoint of both models before it calls either one and stops with a usage error when one is missing or not trusted.
 
 Instead of an API key, a model can use your ChatGPT plan: set its `provider` to `chatgpt` and sign in once with `kerpeten auth login` (see [ChatGPT plan](#chatgpt-plan)).
 
 ## Usage
-
-Install the dependencies once, in this repository:
-
-```sh
-bun install
-```
 
 Add a `.kerpeten.yml` to the root of the repository you want to review:
 
@@ -36,19 +37,28 @@ A model takes an optional `max_output_tokens` (1-1000000). Left out, Kerpeten se
 
 When the final answer of the reviewer or the judge comes back empty or does not fit the expected form, the same request is sent again, up to three times in all. If all three fail, the review ends as before: a reviewer without an answer ends the review with an error, a judge without an answer leaves a `judge_error` on that finding.
 
-Build the binary once and run the review from inside that repository:
+Run the review from inside that repository:
 
 ```sh
-cd /path/to/kerpeten-harness && bun run build -- --target linux-x64
 cd /path/to/your-repository
-/path/to/kerpeten-harness/dist/kerpeten-linux-x64 review --dry-run
+kerpeten review --dry-run
 ```
 
-The binary runs from any directory. While you work on the harness itself, `scripts/kerpeten.ts` runs it from source in the same way, without a build:
+### From source
+
+To work on Kerpeten itself you need [Bun](https://bun.sh) 1.4.5. Install the dependencies once, in this repository:
 
 ```sh
-bun /path/to/kerpeten-harness/scripts/kerpeten.ts review --dry-run
+bun install
 ```
+
+`scripts/kerpeten.ts` runs the CLI from source, without a build, from any directory:
+
+```sh
+bun /path/to/kerpeten/scripts/kerpeten.ts review --dry-run
+```
+
+`bun run build -- --target linux-x64` writes a standalone binary to `dist/`, which also runs from any directory.
 
 Do not start `src/cli/main.ts` directly from another directory: Bun takes the decorator dialect from the `tsconfig.json` of the working directory, and the CLI needs the `experimentalDecorators` setting of this repository's. The launcher passes it with `--tsconfig-override`; the binary has it compiled in.
 
@@ -126,6 +136,8 @@ bun run build -- --target linux-x64
 ```
 
 `check` runs the linter, the type check, the tests and the source layout rules. `build` writes a standalone binary to `dist/`; the targets are `linux-x64`, `linux-arm64` and `darwin-arm64`.
+
+`bun run npm-packages` writes the npm packages to `dist/npm/`: the `kerpeten` package with the launcher, and one `@kerpetensh/kerpeten-<target>` package with the binary of each target. `bun run npm-smoke` installs them with npm into an empty directory and runs the installed command. [RELEASING.md](RELEASING.md) tells how a version gets to npm.
 
 ## License
 

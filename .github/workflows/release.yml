@@ -1,0 +1,65 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: The tag is the package version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="v$(jq -r .version package.json)"
+          if [ "$version" != "$TAG" ]; then
+            echo "the tag is $TAG but package.json says $version" >&2
+            exit 1
+          fi
+
+  check:
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: "24"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: npm-tarballs
+          path: ${{ runner.temp }}/tarballs
+      - name: Publish the platform packages, then the main package
+        working-directory: ${{ runner.temp }}/tarballs
+        run: |
+          set -euo pipefail
+          needed=11.5.1
+          have="$(npm --version)"
+          if [ "$(printf '%s\n%s\n' "$needed" "$have" | sort -V | head -n 1)" != "$needed" ]; then
+            echo "npm $have is older than $needed, which trusted publishing needs" >&2
+            exit 1
+          fi
+          for tarball in kerpetensh-kerpeten-*.tgz kerpeten-*.tgz; do
+            name="$(tar -xOf "$tarball" package/package.json | jq -r .name)"
+            version="$(tar -xOf "$tarball" package/package.json | jq -r .version)"
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already published"
+            else
+              npm publish "$tarball" --access public
+            fi
+          done

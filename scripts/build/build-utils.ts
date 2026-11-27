@@ -1,13 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { Targets } from "./Targets.ts";
 import type { Target } from "./types/build.ts";
-
-const TARGETS: readonly Target[] = ["linux-x64", "linux-arm64", "darwin-arm64"];
-
-function isTarget(value: string): value is Target {
-  return (TARGETS as readonly string[]).includes(value);
-}
 
 export function buildBinary(root: string, target: Target, outfile: string): void {
   const result = Bun.spawnSync(
@@ -24,13 +19,13 @@ export function buildBinary(root: string, target: Target, outfile: string): void
 
 export function runBuild(root: string, args: readonly string[]): number {
   const parsed = parseArgs({ args: [...args], options: { target: { type: "string", multiple: true } } });
-  const wanted = parsed.values.target ?? [...TARGETS];
+  const wanted = parsed.values.target ?? [...Targets.ALL];
 
   mkdirSync(join(root, "dist"), { recursive: true });
 
   for (const target of wanted) {
-    if (!isTarget(target)) {
-      console.error(`build: unknown target ${target}; expected one of ${TARGETS.join(", ")}`);
+    if (!Targets.is(target)) {
+      console.error(`build: unknown target ${target}; expected one of ${Targets.ALL.join(", ")}`);
 
       return 2;
     }
