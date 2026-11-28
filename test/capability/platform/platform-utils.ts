@@ -41,7 +41,7 @@ export function glabPaths(number: number): GlabPaths {
  * Writes a script named `name` into `dir` and returns its path. It appends the arguments of every call to
  * `<name>-calls.txt` and its working directory to `<name>-cwd.txt`, runs `before`, and answers by its last argument,
  * the path, from `answers`; a path it has no answer for ends with 97. It uses only what the shell has built in, so it
- * needs no PATH.
+ * needs no PATH; an answer that hangs runs `/bin/sleep`.
  */
 export function fakeCli(dir: string, name: CliName, answers: Readonly<Record<string, CliAnswer>>, before = ""): string {
   const cases = Object.entries(answers).map(([path, answer]) =>
@@ -49,6 +49,7 @@ export function fakeCli(dir: string, name: CliName, answers: Readonly<Record<str
       `  ${quoted(path)})`,
       `    printf '%s' ${quoted(answer.stdout ?? "")}`,
       `    printf '%s' ${quoted(answer.stderr ?? "")} >&2`,
+      ...(answer.hangs === true ? ["    exec /bin/sleep 30"] : []),
       `    exit ${answer.exitCode ?? 0} ;;`,
     ].join("\n"),
   );

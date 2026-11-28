@@ -4,9 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KerpetenApp } from "../../../src/app/KerpetenApp.ts";
 import { GitHubPlatform } from "../../../src/capability/platform/GitHubPlatform.ts";
+import { LimitedOutput } from "../../../src/capability/platform/LimitedOutput.ts";
 import { PlatformError } from "../../../src/capability/platform/PlatformError.ts";
+import { PlatformLimits } from "../../../src/capability/platform/PlatformLimits.ts";
 import { SlurpedPages } from "../../../src/capability/platform/SlurpedPages.ts";
-import type { PlatformFailure } from "../../../src/capability/platform/types/platform.ts";
+import type { PlatformFailure, PlatformReadLimits } from "../../../src/capability/platform/types/platform.ts";
 import { PermissionGroupSet, Run } from "../../../src/harness-kit/index.ts";
 import { runComponent } from "../../app/app-utils.ts";
 import { cliDirs, fakeGh, ghCalls, ghPaths, pullJson, SHA_A, SHA_B, SHA_C, slurped } from "./platform-utils.ts";
@@ -16,6 +18,8 @@ import type { GhAnswer } from "./types/platform.ts";
 const COMPONENTS = [...KerpetenApp.COMPONENTS.filter((component) => component !== GitHubPlatform), TestGitHubPlatform];
 
 const READ = ["api", "--method", "GET"];
+
+const LIMITS: PlatformReadLimits = { bytes: PlatformLimits.READ_BYTES, ms: PlatformLimits.READ_MS };
 
 const paths = ghPaths(12);
 
@@ -33,9 +37,17 @@ function tempDir(): string {
   return dir;
 }
 
-/** The platform of a new run in `dir`, with a fake gh there that gives `answers`. */
-function platform(dir: string, answers: Readonly<Record<string, GhAnswer>>): Promise<TestGitHubPlatform> {
-  return runComponent(TestGitHubPlatform, { repo: dir, ghCommand: fakeGh(dir, answers) }, { components: COMPONENTS });
+/** The platform of a new run in `dir`, with a fake gh there that gives `answers`, and with the read budget `limits`. */
+function platform(
+  dir: string,
+  answers: Readonly<Record<string, GhAnswer>>,
+  limits: PlatformReadLimits = LIMITS,
+): Promise<TestGitHubPlatform> {
+  return runComponent(
+    TestGitHubPlatform,
+    { repo: dir, ghCommand: fakeGh(dir, answers), ghLimits: limits },
+    { components: COMPONENTS },
+  );
 }
 
 async function failure(read: Promise<unknown>): Promise<PlatformError> {
@@ -55,6 +67,9 @@ const lineComment = {
   user: { login: "ada" },
   body: "y can be 0",
   path: "src/a.ts",
+  subject_type: "line",
+  side: "RIGHT",
+  start_side: null,
   line: 7,
   start_line: null,
   original_line: 7,
@@ -158,7 +173,7 @@ describe("GitHub platform: the pull request", () => {
 
     const github = await runComponent(
       TestGitHubPlatform,
-      { repo: dir, ghCommand: join(dir, "no-gh-here") },
+      { repo: dir, ghCommand: join(dir, "no-gh-here"), ghLimits: LIMITS },
       { components: COMPONENTS },
     );
 
@@ -221,25 +236,28 @@ describe("GitHub platform: the comments", () => {
 
   test("gives the comments on lines of every page, with replies, ranges, outdated places and missing authors", async () => {
     const reply = { ...lineComment, id: 102, user: { login: "bob" }, body: "it cannot", in_reply_to_id: 101 };
-    const range = { ...lineComment, id: 103, line: 9, start_line: 4 };
+    const range = { ...lineComment, id: 103, line: 9, start_line: 4, start_side: "RIGHT" };
 
     const outdated = {
       ...lineComment,
       id: 104,
       user: null,
+      start_side: "RIGHT",
       line: null,
       original_line: 30,
       original_start_line: 28,
     };
 
     const wholeFile = { ...lineComment, id: 105, line: null, original_line: null };
+    const fileSubject = { ...lineComment, id: 106, subject_type: "file", line: 1, original_line: 1 };
 
     const github = await platform(tempDir(), {
       ...emptyLists,
-      [paths.comments]: { stdout: slurped([lineComment, reply], [range, outdated, wholeFile]) },
+      [paths.comments]: { stdout: slurped([lineComment, reply], [range, outdated, wholeFile, fileSubject]) },
     });
 
-    const onLine = { kind: "line", file: "src/a.ts", createdAt: "2026-11-20T10:00:00Z" } as const;
+    const onLine = { kind: "line", file: "src/a.ts", side: "new", createdAt: "2026-11-20T10:00:00Z" } as const;
+    const onFile = { ...onLine, author: "ada", body: "y can be 0", lines: null, side: null, replyTo: null };
 
     expect(await github.comments(12)).toEqual({
       comments: [
@@ -279,11 +297,75 @@ describe("GitHub platform: the comments", () => {
           commit: SHA_B,
           replyTo: null,
         },
-        { ...onLine, id: "105", author: "ada", body: "y can be 0", lines: null, commit: SHA_B, replyTo: null },
+        { ...onFile, id: "105", commit: SHA_B },
+        { ...onFile, id: "106", commit: SHA_A },
       ],
       complete: true,
       problems: [],
     });
+  });
+
+  test("a comment says which side its lines are on: the old side for a line the change removed", async () => {
+    const removed = { ...lineComment, id: 111, side: "LEFT", line: 320, original_line: 320 };
+    const removedRange = { ...removed, id: 112, start_side: "LEFT", start_line: 318, original_start_line: 318 };
+
+    const outdatedRemoved = {
+      ...removedRange,
+      id: 113,
+      line: null,
+      start_line: null,
+      original_line: 30,
+      original_start_line: 28,
+    };
+
+    const crossing = {
+      ...lineComment,
+      id: 114,
+      side: "RIGHT",
+      start_side: "LEFT",
+      line: 598,
+      start_line: 581,
+      original_line: 592,
+      original_start_line: 581,
+    };
+
+    const crossingBack = { ...crossing, id: 115, side: "LEFT", start_side: "RIGHT", line: 40, start_line: 44 };
+    const outdatedCrossing = { ...crossing, id: 116, line: null, start_line: null };
+
+    const github = await platform(tempDir(), {
+      ...emptyLists,
+      [paths.comments]: {
+        stdout: slurped([removed, removedRange, outdatedRemoved, crossing, crossingBack, outdatedCrossing]),
+      },
+    });
+
+    const read = await github.comments(12);
+
+    expect(read.complete).toBe(true);
+
+    expect(read.comments.map(({ id, file, lines, side, commit }) => ({ id, file, lines, side, commit }))).toEqual([
+      { id: "111", file: "src/a.ts", lines: { start: 320, end: 320 }, side: "old", commit: SHA_A },
+      { id: "112", file: "src/a.ts", lines: { start: 318, end: 320 }, side: "old", commit: SHA_A },
+      { id: "113", file: "src/a.ts", lines: { start: 28, end: 30 }, side: "old", commit: SHA_B },
+      { id: "114", file: "src/a.ts", lines: { start: 598, end: 598 }, side: "new", commit: SHA_A },
+      { id: "115", file: "src/a.ts", lines: { start: 40, end: 40 }, side: "old", commit: SHA_A },
+      { id: "116", file: "src/a.ts", lines: { start: 592, end: 592 }, side: "new", commit: SHA_B },
+    ]);
+  });
+
+  test("a comment on lines whose side gh does not name cannot be read: its side is not guessed", async () => {
+    const { side: _side, ...sideless } = lineComment;
+
+    const github = await platform(tempDir(), {
+      ...emptyLists,
+      [paths.comments]: { stdout: slurped([lineComment, sideless, { ...lineComment, id: 103, side: "CENTER" }]) },
+    });
+
+    const read = await github.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101"]);
+    expect(read.complete).toBe(false);
+    expect(read.problems).toEqual(["repos/{owner}/{repo}/pulls/12/comments: 2 of 3 entries cannot be read"]);
   });
 
   test("a review with a body and a comment of the conversation are general comments; a review without a body is none", async () => {
@@ -309,7 +391,7 @@ describe("GitHub platform: the comments", () => {
       [paths.conversation]: { stdout: slurped(conversation) },
     });
 
-    const general = { kind: "general", file: null, lines: null, replyTo: null } as const;
+    const general = { kind: "general", file: null, lines: null, side: null, replyTo: null } as const;
 
     expect(await github.comments(12)).toEqual({
       comments: [
@@ -398,6 +480,103 @@ describe("GitHub platform: the comments", () => {
   });
 });
 
+describe("GitHub platform: the budget of a read", () => {
+  const second = { ...lineComment, id: 102 };
+  const third = { ...lineComment, id: 103 };
+  const twoPages = `[${JSON.stringify([lineComment])},${JSON.stringify([second])}`;
+  const threePages = `${twoPages},${JSON.stringify([third])}]`;
+  const list = "repos/{owner}/{repo}/pulls/12/comments";
+
+  test("the budget is 20,000,000 bytes and two minutes for every read", () => {
+    expect(LIMITS).toEqual({ bytes: 20_000_000, ms: 120_000 });
+  });
+
+  test("a list larger than the byte limit stops there: the pages that stand whole are kept and the result is incomplete", async () => {
+    const bytes = twoPages.length + 5;
+    const dir = tempDir();
+
+    const github = await platform(
+      dir,
+      { ...emptyLists, [paths.comments]: { stdout: threePages } },
+      { bytes, ms: LIMITS.ms },
+    );
+
+    const read = await github.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102"]);
+    expect(read.complete).toBe(false);
+    expect(read.problems).toEqual([`${list}: gh printed more than ${bytes} bytes, and the read stopped there`]);
+    expect(ghCalls(dir).length).toBe(3);
+  });
+
+  test("a list of exactly the byte limit is whole", async () => {
+    const github = await platform(
+      tempDir(),
+      { ...emptyLists, [paths.comments]: { stdout: threePages } },
+      { bytes: threePages.length, ms: LIMITS.ms },
+    );
+
+    const read = await github.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102", "103"]);
+    expect(read).toMatchObject({ complete: true, problems: [] });
+  });
+
+  test("a list gh does not finish within the time limit stops there, with the pages it printed, and says so", async () => {
+    const github = await platform(
+      tempDir(),
+      { ...emptyLists, [paths.comments]: { stdout: `${twoPages},`, hangs: true } },
+      { bytes: LIMITS.bytes, ms: 300 },
+    );
+
+    const started = Date.now();
+    const read = await github.comments(12);
+
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102"]);
+    expect(read.complete).toBe(false);
+    expect(read.problems).toEqual([`${list}: gh did not finish within 0.3 seconds, and the read stopped there`]);
+  });
+
+  test("a pull request read that reaches a limit is a platform error that names the limit", async () => {
+    const cases: [GhAnswer, PlatformReadLimits, string][] = [
+      [
+        { stdout: pullJson(), hangs: true },
+        { bytes: LIMITS.bytes, ms: 300 },
+        "pull request 12 was not read: gh did not finish within 0.3 seconds, and the read stopped there",
+      ],
+      [
+        { stdout: pullJson() },
+        { bytes: 100, ms: LIMITS.ms },
+        "pull request 12 was not read: gh printed more than 100 bytes, and the read stopped there",
+      ],
+    ];
+
+    for (const [answer, limits, message] of cases) {
+      const error = await failure((await platform(tempDir(), { [paths.pull]: answer }, limits)).mergeRequest(12));
+
+      expect({ kind: error.kind, message: error.message }).toEqual({ kind: "failed", message });
+    }
+  });
+
+  test("an output keeps the bytes up to its limit and says when the program printed more", () => {
+    const output = new LimitedOutput(5);
+
+    expect(output.take(Buffer.from("abc"))).toBe(true);
+    expect(output.take(Buffer.from("de"))).toBe(true);
+    expect(output.over).toBe(false);
+    expect(output.take(Buffer.from("fgh"))).toBe(false);
+    expect(output.over).toBe(true);
+    expect(output.bytes.toString()).toBe("abcde");
+
+    const cut = new LimitedOutput(4);
+
+    expect(cut.take(Buffer.from("abcdefgh"))).toBe(false);
+    expect(cut.bytes.toString()).toBe("abcd");
+    expect(new LimitedOutput(0).bytes.length).toBe(0);
+  });
+});
+
 describe("GitHub platform: the environment of gh", () => {
   test("gh gets the program's environment without the variables that force colors", async () => {
     const dir = tempDir();
@@ -418,7 +597,7 @@ describe("GitHub platform: the environment of gh", () => {
 
       const run = new Run(
         { group: PermissionGroupSet.ALL, every: true },
-        { values: { repo: dir, ghCommand }, container: app.container, test: true },
+        { values: { repo: dir, ghCommand, ghLimits: LIMITS }, container: app.container, test: true },
       );
 
       await (await run.ready(TestGitHubPlatform)).mergeRequest(12);

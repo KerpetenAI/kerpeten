@@ -194,6 +194,9 @@ describe("kerpeten review --dry-run --mr", () => {
     expect(prompt).toMatch(/BEGIN DATA description \S+ ===\\nNeeded for the cart\.\\n=== END DATA description/);
     expect(prompt).not.toContain("The commit message says why.");
 
+    expect(result.err).toContain('"review started" command=review mode=merge-request provider=anthropic');
+    expect(result.err).not.toContain("mode=local-branch");
+
     expect(result.err).toContain(
       `"merge request read" command=review tenant=default platform=github host=github.com project=4242 mr=12 state=open head=${head} base=${base}`,
     );
@@ -232,6 +235,7 @@ describe("kerpeten review --dry-run --mr", () => {
 
     expect(local.code).toBe(ExitCode.OK);
     expect(Object.keys(JSON.parse(local.out))).toEqual(["findings", "usage"]);
+    expect(local.err).toContain('"review started" command=review mode=local-branch provider=anthropic');
     expect(ghCalls(local.bin)).toEqual([]);
   });
 

@@ -13,14 +13,7 @@ import { errorMessage, terminalLine } from "../../text/text-utils.ts";
 import { JsonLines } from "./JsonLines.ts";
 import { PlatformError } from "./PlatformError.ts";
 import { gitlabDiscussionSchema, gitlabMergeRequestSchema } from "./schemas/gitlab-schema.ts";
-import type {
-  GitLabDiscussion,
-  GitLabMergeRequest,
-  GitLabNote,
-  GitLabPlace,
-  GitLabPosition,
-  GitLabSide,
-} from "./types/gitlab.ts";
+import type { GitLabDiscussion, GitLabMergeRequest, GitLabNote, GitLabPlace, GitLabPosition } from "./types/gitlab.ts";
 import type {
   MergeRequest,
   MergeRequestState,
@@ -29,6 +22,7 @@ import type {
   PlatformComments,
   PlatformLines,
   PlatformList,
+  PlatformSide,
 } from "./types/platform.ts";
 
 /**
@@ -148,7 +142,7 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
   }
 
   /** The side a position is on: the file before the change only for a line the change removed. */
-  private static side(position: GitLabPosition): GitLabSide {
+  private static side(position: GitLabPosition): PlatformSide {
     const removed = position.position_type === "text" && (position.new_line ?? undefined) === undefined;
 
     return removed && (position.old_line ?? undefined) !== undefined ? "old" : "new";
@@ -156,9 +150,10 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
 
   /**
    * The lines of a position on its side: the range when it has one, else its one line, and none for a position on a
-   * whole file. An end of the range that has no line on that side takes the position's own line.
+   * whole file. An end of the range that has no line on that side takes the position's own line, which is the last
+   * line of the range; so a range whose first line is on the other side gives its last line alone.
    */
-  private static lines(position: GitLabPosition, side: GitLabSide): PlatformLines | null {
+  private static lines(position: GitLabPosition, side: PlatformSide): PlatformLines | null {
     const own = (side === "old" ? position.old_line : position.new_line) ?? undefined;
 
     if (position.position_type !== "text" || own === undefined) return null;
@@ -174,25 +169,27 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
   }
 
   /**
-   * Where a note with a position sits. On the new side it is the file and the lines at the head commit the note was
-   * written on. A note on a removed line has no line there: it is the file and the line as they were at the base
-   * commit, where that line still is.
+   * Where a note with a position sits, in the fields of a platform comment: the file by its path after the change,
+   * the old path only when GitLab gives no new one; the head commit of the diff the note was written on; and the
+   * lines with their side, the old side for a note on a line the change removed. A note on a whole file has no lines
+   * and no side.
    */
   private static place(position: GitLabPosition): GitLabPlace {
     const side = GitLabPlatform.side(position);
-
-    const { new_path: newPath, old_path: oldPath } = position;
+    const lines = GitLabPlatform.lines(position, side);
 
     return {
-      file: (side === "old" ? (oldPath ?? newPath) : (newPath ?? oldPath)) ?? null,
-      lines: GitLabPlatform.lines(position, side),
-      commit: side === "old" ? position.base_sha : position.head_sha,
+      file: position.new_path ?? position.old_path ?? null,
+      lines,
+      side: lines === null ? null : side,
+      commit: position.head_sha,
     };
   }
 
   private static comment(note: GitLabNote, replyTo: string | null): PlatformComment {
     const position = note.position ?? undefined;
-    const place = position === undefined ? { file: null, lines: null, commit: null } : GitLabPlatform.place(position);
+    const none: GitLabPlace = { file: null, lines: null, side: null, commit: null };
+    const place = position === undefined ? none : GitLabPlatform.place(position);
 
     return {
       id: String(note.id),

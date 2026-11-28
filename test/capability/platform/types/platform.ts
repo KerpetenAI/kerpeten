@@ -1,11 +1,15 @@
 /** The command line tools of the platforms that a test puts a script in the place of. */
 export type CliName = "gh" | "glab";
 
-/** What a fake CLI does for one path: what it prints, what it writes to stderr and how it exits, 0 when left out. */
+/**
+ * What a fake CLI does for one path: what it prints, what it writes to stderr and how it exits, 0 when left out. With
+ * `hangs` it does not exit after it printed: it stays for half a minute, as a tool that waits for an answer.
+ */
 export interface CliAnswer {
   readonly stdout?: string;
   readonly stderr?: string;
   readonly exitCode?: number;
+  readonly hangs?: boolean;
 }
 
 /** What the fake gh does for one path. */

@@ -103,9 +103,15 @@ const SIGNED_OUT_MESSAGE =
 const NO_REPOSITORY_MESSAGE =
   "glab finds no GitLab project in this folder: run inside a clone whose remote is on GitLab; for a GitLab host of your own, sign glab in to it first with `glab auth login --hostname <host>`";
 
-const general = { kind: "general", file: null, lines: null, commit: null } as const;
+const general = { kind: "general", file: null, lines: null, side: null, commit: null } as const;
 
-const onLine = { kind: "line", file: "src/a.ts", commit: SHA_A, createdAt: "2026-11-20T10:00:00.000Z" } as const;
+const onLine = {
+  kind: "line",
+  file: "src/a.ts",
+  side: "new",
+  commit: SHA_A,
+  createdAt: "2026-11-20T10:00:00.000Z",
+} as const;
 
 describe("GitLab platform: the merge request", () => {
   test("asks glab for the merge request with one GET in the run's repository and gives it in the platform's words", async () => {
@@ -405,17 +411,17 @@ describe("GitLab platform: the comments", () => {
         { ...comment, id: "302", lines: { start: 4, end: 9 } },
         { ...comment, id: "303", lines: { start: 35, end: 35 } },
         { ...comment, id: "304", lines: { start: 230, end: 233 } },
-        { ...comment, id: "305", lines: null },
-        { ...comment, id: "306", lines: null },
+        { ...comment, id: "305", lines: null, side: null },
+        { ...comment, id: "306", lines: null, side: null },
         { ...comment, id: "307", lines: { start: 7, end: 7 }, commit: SHA_C },
-        { ...comment, id: "308", lines: null },
+        { ...comment, id: "308", lines: null, side: null },
       ],
       complete: true,
       problems: [],
     });
   });
 
-  test("a note on a removed line names the file and the line before the change, at the base commit", async () => {
+  test("a note on a removed line is on the old side: the line before the change, the file by its new path, the head commit", async () => {
     const removed = position({ old_path: "src/old.ts", new_path: "src/a.ts", old_line: 5, new_line: null });
 
     const range = {
@@ -441,7 +447,7 @@ describe("GitLab platform: the comments", () => {
       ),
     );
 
-    const comment = { ...onLine, file: "src/old.ts", commit: SHA_B, author: "ada", body: "y can be 0", replyTo: null };
+    const comment = { ...onLine, side: "old", author: "ada", body: "y can be 0", replyTo: null } as const;
 
     expect(read).toEqual({
       comments: [
@@ -449,7 +455,7 @@ describe("GitLab platform: the comments", () => {
         { ...comment, id: "402", lines: { start: 5, end: 5 }, author: "bob", body: "it was dead code", replyTo: "401" },
         { ...comment, id: "403", lines: { start: 3, end: 5 } },
         { ...comment, id: "404", lines: { start: 5, end: 5 } },
-        { ...comment, id: "405", lines: { start: 5, end: 5 } },
+        { ...comment, id: "405", lines: { start: 5, end: 5 }, file: "src/old.ts" },
       ],
       complete: true,
       problems: [],
