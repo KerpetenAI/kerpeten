@@ -54,10 +54,10 @@ export KERPETEN_TRUSTED_ENDPOINTS=EXAMPLE_API_KEY=https://llm.example.com/v1
 
 ## Comment language
 
-`comment_language` is the language the findings are written in, as a language tag such as `en`, `tr` or `pt-BR`. It is `tr` when left out.
+`comment_language` is the language the findings are written in, as a language tag such as `en`, `tr` or `pt-BR`. It is `en`, English, when left out.
 
 ```yaml
-comment_language: en
+comment_language: tr
 ```
 
 ## Ignored files
