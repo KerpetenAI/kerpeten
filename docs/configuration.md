@@ -52,6 +52,16 @@ export EXAMPLE_API_KEY=<your key>
 export KERPETEN_TRUSTED_ENDPOINTS=EXAMPLE_API_KEY=https://llm.example.com/v1
 ```
 
+## Platform
+
+`platform` names the platform of the repository, `github` or `gitlab`, for [`kerpeten review --mr`](reviewing.md#reviewing-a-pull-request-or-merge-request). It decides which tool reads the pull request or merge request: `gh` for GitHub, `glab` for GitLab.
+
+```yaml
+platform: gitlab
+```
+
+Left out, the host of the `origin` remote decides: `github.com` is GitHub and `gitlab.com` is GitLab. Any other host needs the key, for example a GitLab of your own or GitHub Enterprise, and so does a repository without an `origin` remote: there `--mr` stops with an error that asks for it. The key wins over the remote. A review without `--mr` does not need it.
+
 ## Comment language
 
 `comment_language` is the language the findings are written in, as a language tag such as `en`, `tr` or `pt-BR`. It is `en`, English, when left out.

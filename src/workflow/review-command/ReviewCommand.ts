@@ -22,13 +22,13 @@ import type { ReviewFlags } from "./types/review-command.ts";
 /**
  * The `review` command: checks the flags, gets the review ready, runs the local review workflow, which it lists in its
  * chain and which joins its run of the flag's permission group, and prints the result. An error of the local review ends the command
- * with 2 when the input was wrong, a pull request of `--mr` that cannot be read among them, and with 1 otherwise, or with
+ * with 2 when the input was wrong, a pull request or merge request of `--mr` that cannot be read among them, and with 1 otherwise, or with
  * the ChatGPT plan's stop when the plan stopped it.
  */
 @Workflow({
   name: "review-command",
   description:
-    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews GitHub pull request n of the repository, read with gh, with its title and description; HEAD must be its last commit. This build needs --dry-run.",
+    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews pull request n of a GitHub repository, read with gh, or merge request n of a GitLab repository, read with glab, with its title and description; HEAD must be its last commit. This build needs --dry-run.",
   steps: [ReviewFlagStep, ReviewSetupStep, ReviewWorkflow, ReviewOutcomeStep, ReviewPrintStep],
   command: {
     name: "review",
@@ -57,7 +57,7 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
     const number = Number(value);
 
     if (!ReviewCommand.MR_NUMBER.test(value) || !Number.isSafeInteger(number)) {
-      throw new UsageError("--mr must be the number of a pull request, 1 or more");
+      throw new UsageError("--mr must be the number of a pull request or merge request, 1 or more");
     }
 
     return number;
@@ -78,7 +78,7 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
     const mr = mrFlag === undefined ? undefined : ReviewCommand.mergeRequestNumber(mrFlag);
 
     if (mr !== undefined && base !== undefined) {
-      throw new UsageError("--mr and --base do not go together: the pull request names its own base");
+      throw new UsageError("--mr and --base do not go together: the pull request or merge request names its own base");
     }
 
     const contextFile = args.string("context-file");

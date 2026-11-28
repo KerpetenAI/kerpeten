@@ -5,13 +5,30 @@ import { join } from "node:path";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { ExitCode } from "../../src/harness-kit/index.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
-import { fakeGh, ghCalls, ghPaths, pullJson, SHA_C } from "../capability/platform/platform-utils.ts";
-import type { GhAnswer } from "../capability/platform/types/platform.ts";
+import {
+  fakeCli,
+  ghCalls,
+  ghPaths,
+  glabCalls,
+  glabPaths,
+  mergeRequestJson,
+  pullJson,
+  SHA_C,
+} from "../capability/platform/platform-utils.ts";
+import type { CliAnswer, CliName, GhAnswer } from "../capability/platform/types/platform.ts";
 import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
 
 const KEY = "sk-test-secret-value-123";
 
 const GH_TOKEN = "ghp_REVIEW_MR_TEST_TOKEN_5d1c";
+
+const GITLAB_TOKEN = "gitlab-token-of-the-review-mr-test-77e2";
+
+const GITHUB_ORIGIN = "https://github.com/Acme/Shop.git";
+
+const GITLAB_ORIGIN = "git@gitlab.com:acme/shop.git";
+
+const SELF_HOSTED_ORIGIN = "https://git.example.com/acme/shop.git";
 
 const KIMI_URL = "https://api.kimi.com/coding/v1";
 
@@ -23,6 +40,10 @@ const CONFIG = `models:
 `;
 
 const PULL = ghPaths(12).pull;
+
+const MERGE_REQUEST = glabPaths(12).mergeRequest;
+
+const GLAB_READ = ["api", "--method", "GET", "--output", "ndjson", MERGE_REQUEST];
 
 const finding = {
   file: "src/a.ts",
@@ -62,13 +83,17 @@ function tempDir(): string {
 
 /**
  * A repository on the branch `feature`, one commit after `fork` on `main`; `main` then got one more commit, `base`,
- * as the branch a pull request goes into does.
+ * as the branch a pull request goes into does. Its remote `origin` is at `origin`, on github.com when none is given
+ * and missing for `"no origin"`. `config` is added to its `.kerpeten.yml`.
  */
-function repo(): { dir: string; fork: string; base: string; head: string } {
+function repo(origin: string = GITHUB_ORIGIN, config = ""): { dir: string; fork: string; base: string; head: string } {
   const dir = tempRepo("kerpeten-cli-mr-repo-");
 
   dirs.push(dir);
-  write(dir, { "src/a.ts": "export const a = 1;\n", ".kerpeten.yml": CONFIG });
+
+  if (origin !== "no origin") sh(dir, ["remote", "add", "origin", origin]);
+
+  write(dir, { "src/a.ts": "export const a = 1;\n", ".kerpeten.yml": `${CONFIG}${config}` });
 
   const fork = commit(dir, "base");
 
@@ -85,15 +110,17 @@ function repo(): { dir: string; fork: string; base: string; head: string } {
 }
 
 /**
- * Runs the command in `cwd` with a fake gh first on the PATH of the program's environment, which gives `answers`, or
- * with a PATH that holds no gh at all when `answers` is `"no gh"`. `bin` is the folder of the fake gh, a new one when
- * none is given, where it keeps what it was called with.
+ * Runs the command in `cwd` with a fake `cli`, gh when none is named, first on the PATH of the program's environment,
+ * which gives `answers`, or with a PATH that does not hold that tool at all when `answers` is `"not installed"`. The
+ * tool of the other platform is there too, as a fake without answers, so a call of it shows. `bin` is the folder of
+ * the fakes, a new one when none is given, where they keep what they were called with.
  */
 async function run(
   cwd: string,
   argv: string[],
-  answers: Readonly<Record<string, GhAnswer>> | "no gh",
+  answers: Readonly<Record<string, CliAnswer>> | "not installed",
   options: {
+    cli?: CliName;
     env?: Record<string, string>;
     script?: Parameters<typeof mockClient>[0];
     judgeScript?: Parameters<typeof mockClient>[0];
@@ -106,14 +133,17 @@ async function run(
   const bin = options.bin ?? tempDir();
   const reviewerMock = mockClient(options.script ?? REVIEW);
   const judgeMock = mockClient(options.judgeScript ?? []);
+  const cli = options.cli ?? "gh";
   let created = 0;
 
-  if (answers !== "no gh") fakeGh(bin, answers, options.before);
+  fakeCli(bin, cli === "gh" ? "glab" : "gh", {});
+
+  if (answers !== "not installed") fakeCli(bin, cli, answers, options.before);
 
   const code = await KerpetenApp.run(
     {
       io: { out: (line) => out.push(line), err: (line) => err.push(line) },
-      env: { ...ENV, ...options.env, PATH: answers === "no gh" ? bin : `${bin}:${process.env.PATH ?? ""}` },
+      env: { ...ENV, ...options.env, PATH: answers === "not installed" ? bin : `${bin}:${process.env.PATH ?? ""}` },
       cwd,
       now: () => 0,
       createClient: () => (created++ === 0 ? reviewerMock.client : judgeMock.client),
@@ -156,6 +186,7 @@ describe("kerpeten review --dry-run --mr", () => {
 
     expect(result.out).toContain("- src/a.ts:2-2 [bug] Division by zero");
     expect(ghCalls(result.bin)).toEqual([["api", "--method", "GET", "repos/{owner}/{repo}/pulls/12"]]);
+    expect(glabCalls(result.bin)).toEqual([]);
 
     const prompt = promptText(result.reviewerCalls[0]);
 
@@ -319,7 +350,7 @@ describe("kerpeten review --dry-run --mr", () => {
 
   test("a gh that is not installed is a usage error that says to install it, before any model call", async () => {
     const { dir } = repo();
-    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], "no gh");
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], "not installed");
 
     expect(result.code).toBe(ExitCode.USAGE);
     expect(result.err).toContain("kerpeten review: --mr 12: gh, the GitHub CLI, is not found (");
@@ -374,7 +405,11 @@ describe("kerpeten review --dry-run --mr", () => {
     });
 
     expect(result.code).toBe(ExitCode.USAGE);
-    expect(result.err).toContain("--mr and --base do not go together: the pull request names its own base");
+
+    expect(result.err).toContain(
+      "--mr and --base do not go together: the pull request or merge request names its own base",
+    );
+
     expect(ghCalls(result.bin)).toEqual([]);
     expect(result.calls.length).toBe(0);
   });
@@ -388,7 +423,7 @@ describe("kerpeten review --dry-run --mr", () => {
       });
 
       expect(result.code).toBe(ExitCode.USAGE);
-      expect(result.err).toContain("--mr must be the number of a pull request, 1 or more");
+      expect(result.err).toContain("--mr must be the number of a pull request or merge request, 1 or more");
       expect(ghCalls(result.bin)).toEqual([]);
       expect(result.calls.length).toBe(0);
     });
@@ -441,5 +476,365 @@ describe("kerpeten review --dry-run --mr", () => {
       if (before === undefined) delete process.env.GH_TOKEN;
       else process.env.GH_TOKEN = before;
     }
+  });
+});
+
+describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
+  test("reviews the merge request glab gives: one read of it, its title and description for the reviewer, one line for it in the output", async () => {
+    const { dir, fork, base, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [MERGE_REQUEST]: {
+          stdout: mergeRequestJson({
+            sha: head,
+            baseSha: base,
+            title: "Add a division helper",
+            description: "Needed for the cart.",
+          }),
+        },
+      },
+      { cli: "glab" },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+
+    expect(result.out.split("\n").slice(0, 2)).toEqual([
+      "merge request: #12 Add a division helper (open), gitlab gitlab.com, project 4242, tenant default",
+      `review: ${fork.slice(0, 12)}..${head.slice(0, 12)}, 1 changed files, prompt reviewer v4`,
+    ]);
+
+    expect(result.out).toContain("- src/a.ts:2-2 [bug] Division by zero");
+    expect(glabCalls(result.bin)).toEqual([GLAB_READ]);
+    expect(ghCalls(result.bin)).toEqual([]);
+
+    const prompt = promptText(result.reviewerCalls[0]);
+
+    expect(prompt).toMatch(/BEGIN DATA title \S+ ===\\nAdd a division helper\\n=== END DATA title/);
+    expect(prompt).toMatch(/BEGIN DATA description \S+ ===\\nNeeded for the cart\.\\n=== END DATA description/);
+    expect(prompt).not.toContain("The commit message says why.");
+
+    expect(result.err).toContain(
+      `"merge request read" command=review tenant=default platform=gitlab host=gitlab.com project=4242 mr=12 state=open head=${head} base=${base}`,
+    );
+  });
+
+  test("--json has the merge request with the platform gitlab", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base, state: "merged" }) } },
+      { cli: "glab", env: { KERPETEN_TENANT: "acme" } },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+
+    const printed = JSON.parse(result.out);
+
+    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "usage"]);
+
+    expect(printed.merge_request).toEqual({
+      tenant: "acme",
+      platform: { kind: "gitlab", host: "gitlab.com" },
+      project: { id: "4242" },
+      mr: 12,
+      title: "Add div",
+      state: "merged",
+      head_sha: head,
+      base_sha: base,
+    });
+
+    expect(printed.findings.length).toBe(1);
+  });
+
+  test("a merge request whose base is where the branch left the target branch is reviewed from there", async () => {
+    const { dir, fork, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: fork, description: null }) } },
+      { cli: "glab" },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain(`review: ${fork.slice(0, 12)}..${head.slice(0, 12)}, 1 changed files`);
+
+    expect(promptText(result.reviewerCalls[0])).toMatch(
+      /BEGIN DATA description \S+ ===\\nadd div\\n\\nThe commit message says why\.\\n=== END DATA description/,
+    );
+  });
+
+  test("a working copy at another commit stops the review after glab read the merge request, with no model call, and says glab mr checkout", async () => {
+    const { dir, fork, base, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: fork, baseSha: base }) } },
+      { cli: "glab" },
+    );
+
+    expect(result.code).toBe(ExitCode.USAGE);
+
+    expect(result.err).toContain(
+      `kerpeten review: HEAD is at ${head} but merge request 12 is at ${fork}; the review is of the merge request's last commit, so run \`glab mr checkout 12\`, or push your commits, and run again`,
+    );
+
+    expect(result.err).not.toContain("pull request");
+    expect(result.err).not.toContain("gh pr");
+    expect(result.out).toBe("");
+    expect(glabCalls(result.bin).length).toBe(1);
+    expect(ghCalls(result.bin)).toEqual([]);
+    expect(result.reviewerCalls.length).toBe(0);
+    expect(result.judgeCalls.length).toBe(0);
+  });
+
+  test("a base commit that is not in the repository stops the review in GitLab's words", async () => {
+    const { dir, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: SHA_C }) } },
+      { cli: "glab" },
+    );
+
+    expect(result.code).toBe(ExitCode.USAGE);
+
+    expect(result.err).toContain(
+      `kerpeten review: the base commit ${SHA_C} of merge request 12 is not in this repository; fetch the branch the merge request goes into, for example with \`git fetch origin\`, and run again`,
+    );
+
+    expect(result.calls.length).toBe(0);
+  });
+
+  test("a glab that is not installed is a usage error that says to install it, before any model call, and gh is not tried", async () => {
+    const { dir } = repo(GITLAB_ORIGIN);
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], "not installed", { cli: "glab" });
+
+    expect(result.code).toBe(ExitCode.USAGE);
+    expect(result.err).toContain("kerpeten review: --mr 12: glab, the GitLab CLI, is not found (");
+    expect(result.err).toContain("): install it from https://gitlab.com/gitlab-org/cli and run again");
+    expect(result.out).toBe("");
+    expect(ghCalls(result.bin)).toEqual([]);
+    expect(result.calls.length).toBe(0);
+  });
+
+  test("each failure of glab is a usage error with the flag and what to do, before any model call", async () => {
+    const cases: [CliAnswer, string][] = [
+      [
+        { exitCode: 1, stderr: "glab: 401 Unauthorized (HTTP 401)\n", stdout: '{"message":"401 Unauthorized"}' },
+        "kerpeten review: --mr 12: GitLab did not accept the sign-in of glab (HTTP 401): run `glab auth login`, or correct the token in GITLAB_TOKEN when that variable is set, and run again",
+      ],
+      [
+        { exitCode: 1, stderr: "glab: 404 Not found (HTTP 404)\n", stdout: '{"message":"404 Not found"}' },
+        "kerpeten review: --mr 12: merge request 12 was not found in the GitLab project of this folder: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in (`glab auth login`) with an account that can read the project",
+      ],
+      [
+        { exitCode: 1, stderr: "\n   ERROR  \n\n  unable to expand placeholder in path: no git remotes found.\n" },
+        "kerpeten review: --mr 12: glab finds no GitLab project in this folder: run inside a clone whose remote is on GitLab; for a GitLab host of your own, sign glab in to it first with `glab auth login --hostname <host>`",
+      ],
+      [
+        { exitCode: 1, stderr: "glab: 502 Bad Gateway (HTTP 502)\n" },
+        "kerpeten review: --mr 12: glab api failed (exit 1): glab: 502 Bad Gateway (HTTP 502)",
+      ],
+      [
+        { stdout: "<html>busy</html>" },
+        "kerpeten review: --mr 12: the answer of glab for merge request 12 cannot be read: it is no JSON",
+      ],
+      [
+        { stdout: mergeRequestJson({ state: "locked" }) },
+        "kerpeten review: --mr 12: merge request 12 is locked: GitLab is merging it right now, so run again when the merge is done",
+      ],
+      [
+        { stdout: mergeRequestJson({ baseSha: null }) },
+        "kerpeten review: --mr 12: merge request 12 has no diff yet, GitLab names no commits for it: push a commit to its branch, or wait until GitLab has made the diff, and run again",
+      ],
+    ];
+
+    for (const [answer, message] of cases) {
+      const { dir } = repo(GITLAB_ORIGIN);
+
+      const result = await run(
+        dir,
+        ["review", "--dry-run", "--mr", "12"],
+        { [MERGE_REQUEST]: answer },
+        { cli: "glab" },
+      );
+
+      expect({ code: result.code, err: result.err }).toEqual({
+        code: ExitCode.USAGE,
+        err: expect.stringContaining(message),
+      });
+
+      expect(result.out).toBe("");
+      expect(ghCalls(result.bin)).toEqual([]);
+      expect(result.calls.length).toBe(0);
+    }
+  });
+
+  test("a GITLAB_TOKEN of the environment reaches glab, and neither the models, the logs, the output nor ripgrep", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+    const dumps = tempDir();
+    const before = process.env.GITLAB_TOKEN;
+
+    process.env.GITLAB_TOKEN = GITLAB_TOKEN;
+
+    try {
+      const bin = tempDir();
+
+      writeFileSync(join(bin, "rg"), `#!/bin/sh\nenv > '${join(dumps, "rg-env.txt")}'\nexit 1\n`);
+      chmodSync(join(bin, "rg"), 0o755);
+
+      const result = await run(
+        dir,
+        ["review", "--dry-run", "--mr", "12", "--json"],
+        { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) } },
+        {
+          cli: "glab",
+          env: { GITLAB_TOKEN },
+          bin,
+          before: `env > '${join(dumps, "glab-env.txt")}'`,
+          script: [{ toolCalls: [{ name: "grep", input: { pattern: "div" } }] }, ...REVIEW] as never,
+          judgeScript: [{ text: "done" }, { text: JSON.stringify(labels) }],
+        },
+      );
+
+      expect(result.code).toBe(ExitCode.OK);
+      expect(result.reviewerCalls.length).toBe(3);
+      expect(result.judgeCalls.length).toBe(2);
+
+      for (const call of result.calls) expect(promptText(call)).not.toContain(GITLAB_TOKEN);
+
+      expect(result.out).not.toContain(GITLAB_TOKEN);
+      expect(result.err).not.toContain(GITLAB_TOKEN);
+      expect(result.err).toContain('"tool call" command=review harness=reviewer tool=grep');
+      expect(readFileSync(join(dumps, "glab-env.txt"), "utf8")).toContain(`GITLAB_TOKEN=${GITLAB_TOKEN}`);
+
+      const ripgrepEnv = readFileSync(join(dumps, "rg-env.txt"), "utf8");
+
+      expect(ripgrepEnv).toContain("PATH=");
+      expect(ripgrepEnv).not.toContain("GITLAB_TOKEN");
+      expect(ripgrepEnv).not.toContain(GITLAB_TOKEN);
+      expect(ripgrepEnv).not.toContain(KEY);
+    } finally {
+      if (before === undefined) delete process.env.GITLAB_TOKEN;
+      else process.env.GITLAB_TOKEN = before;
+    }
+  });
+});
+
+describe("kerpeten review --dry-run --mr: the platform of the repository", () => {
+  test("the platform key of .kerpeten.yml names the platform of a repository on a host of its own", async () => {
+    const gitlab = repo(SELF_HOSTED_ORIGIN, "platform: gitlab\n");
+
+    const onGitLab = await run(
+      gitlab.dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      {
+        [MERGE_REQUEST]: {
+          stdout: mergeRequestJson({
+            sha: gitlab.head,
+            baseSha: gitlab.base,
+            webUrl: "https://git.example.com/acme/shop/-/merge_requests/12",
+          }),
+        },
+      },
+      { cli: "glab" },
+    );
+
+    expect(onGitLab.code).toBe(ExitCode.OK);
+    expect(JSON.parse(onGitLab.out).merge_request.platform).toEqual({ kind: "gitlab", host: "git.example.com" });
+    expect(ghCalls(onGitLab.bin)).toEqual([]);
+
+    const github = repo(SELF_HOSTED_ORIGIN, "platform: github\n");
+
+    const onGitHub = await run(github.dir, ["review", "--dry-run", "--mr", "12", "--json"], {
+      [PULL]: {
+        stdout: pullJson({
+          headSha: github.head,
+          baseSha: github.base,
+          htmlUrl: "https://git.example.com/Acme/Shop/pull/12",
+        }),
+      },
+    });
+
+    expect(onGitHub.code).toBe(ExitCode.OK);
+    expect(JSON.parse(onGitHub.out).merge_request.platform).toEqual({ kind: "github", host: "git.example.com" });
+    expect(glabCalls(onGitHub.bin)).toEqual([]);
+  });
+
+  test("the platform key wins over the host of the origin remote", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN, "platform: github\n");
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+      [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+    });
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("merge request: #12 Add div (open), github github.com, project 4242, tenant default");
+    expect(ghCalls(result.bin).length).toBe(1);
+    expect(glabCalls(result.bin)).toEqual([]);
+  });
+
+  test("a host that is neither github.com nor gitlab.com, and a repository without an origin remote, are usage errors that say to set platform, before any tool or model is called", async () => {
+    const cases: [string, string][] = [
+      [
+        SELF_HOSTED_ORIGIN,
+        "kerpeten review: --mr 12: the origin remote is on git.example.com, which is neither github.com nor gitlab.com: set `platform: github` or `platform: gitlab` in .kerpeten.yml",
+      ],
+      [
+        "https://reader:hunter2@gitlab.example.com/acme/shop.git",
+        "kerpeten review: --mr 12: the origin remote is on gitlab.example.com, which is neither github.com nor gitlab.com: set `platform: github` or `platform: gitlab` in .kerpeten.yml",
+      ],
+      [
+        "no origin",
+        "kerpeten review: --mr 12: this repository has no origin remote to tell the platform from: set `platform: github` or `platform: gitlab` in .kerpeten.yml",
+      ],
+    ];
+
+    for (const [origin, message] of cases) {
+      const { dir, base, head } = repo(origin);
+
+      const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+        [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+      });
+
+      expect({ code: result.code, err: result.err }).toEqual({
+        code: ExitCode.USAGE,
+        err: expect.stringContaining(message),
+      });
+
+      expect(result.err).not.toContain("hunter2");
+      expect(result.out).toBe("");
+      expect(ghCalls(result.bin)).toEqual([]);
+      expect(glabCalls(result.bin)).toEqual([]);
+      expect(result.calls.length).toBe(0);
+    }
+  });
+
+  test("a review without --mr chooses no platform: it runs on a host of its own without the platform key", async () => {
+    const { dir } = repo(SELF_HOSTED_ORIGIN);
+    const result = await run(dir, ["review", "--dry-run", "--base", "main", "--json"], {});
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(Object.keys(JSON.parse(result.out))).toEqual(["findings", "usage"]);
+    expect(ghCalls(result.bin)).toEqual([]);
+    expect(glabCalls(result.bin)).toEqual([]);
+  });
+
+  test("a platform the configuration does not know is refused with the configuration, before any tool or model is called", async () => {
+    const { dir } = repo(GITLAB_ORIGIN, "platform: bitbucket\n");
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {}, { cli: "glab" });
+
+    expect(result.code).toBe(ExitCode.USAGE);
+    expect(result.err).toContain("/platform");
+    expect(glabCalls(result.bin)).toEqual([]);
+    expect(result.calls.length).toBe(0);
   });
 });
