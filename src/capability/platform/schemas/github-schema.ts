@@ -19,7 +19,7 @@ export const githubPullRequestSchema = z.object({
   title: z.string(),
   body: z.string().nullable(),
   head: z.object({ sha }),
-  base: z.object({ sha, ref: z.string(), repo: z.object({ id }) }),
+  base: z.object({ sha, ref: z.string(), repo: z.object({ id, full_name: z.string() }) }),
 });
 
 /**

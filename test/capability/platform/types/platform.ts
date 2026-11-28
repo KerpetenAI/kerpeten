@@ -34,6 +34,7 @@ export interface PullFields {
   readonly merged?: boolean;
   readonly htmlUrl?: string;
   readonly repoId?: number;
+  readonly fullName?: string;
 }
 
 /** The paths `GitLabPlatform` asks glab for, for one merge request. */

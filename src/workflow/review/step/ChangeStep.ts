@@ -168,7 +168,7 @@ export class ChangeStep extends FlowStepBase {
 
     if (!(await this.git.hasCommit(baseSha))) {
       throw new ReviewInputError(
-        `the base commit ${baseSha} of ${noun} ${number} is not in this repository; fetch the branch the ${noun} goes into, for example with \`git fetch origin\`, and run again`,
+        `the base commit ${baseSha} of ${noun} ${number} is not in this repository; fetch the branch the ${noun} goes into with \`git fetch origin\`, and run again`,
       );
     }
 
