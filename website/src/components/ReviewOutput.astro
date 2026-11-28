@@ -1,0 +1,89 @@
+---
+interface Props {
+  output: string;
+}
+
+interface Pair {
+  key: string;
+  value: string;
+}
+
+type Line =
+  | { kind: "meta"; text: string }
+  | { kind: "finding"; place: string; category: string; title: string }
+  | { kind: "labels"; pairs: Pair[] }
+  | { kind: "keyed"; key: string; text: string }
+  | { kind: "detail"; text: string };
+
+function classify(line: string): Line {
+  const finding = /^- (\S+) \[([^\]]+)\] (.*)$/.exec(line);
+
+  if (finding !== null) {
+    return { kind: "finding", place: finding[1] ?? "", category: finding[2] ?? "", title: finding[3] ?? "" };
+  }
+
+  if (/^ {2}verdict \S/.test(line)) {
+    const pairs = line
+      .trim()
+      .split(", ")
+      .map((part) => {
+        const cut = part.indexOf(" ");
+
+        return cut < 0 ? { key: part, value: "" } : { key: part.slice(0, cut), value: part.slice(cut + 1) };
+      });
+
+    return { kind: "labels", pairs };
+  }
+
+  const keyed = /^ {2}(fix|rationale|evidence) (.*)$/.exec(line);
+
+  if (keyed !== null) return { kind: "keyed", key: keyed[1] ?? "", text: keyed[2] ?? "" };
+
+  if (line.startsWith("  ")) return { kind: "detail", text: line.trim() };
+
+  return { kind: "meta", text: line };
+}
+
+const lines = Astro.props.output.split("\n").map(classify);
+---
+
+<div class="out">
+  {
+    lines.map((line) => {
+      if (line.kind === "finding") {
+        return (
+          <div class="out-line out-finding">
+            <span class="out-dash">- </span>
+            <span class="out-place">{line.place}</span> <span class="out-category">[{line.category}]</span>{" "}
+            <span class="out-title">{line.title}</span>
+          </div>
+        );
+      }
+
+      if (line.kind === "labels") {
+        return (
+          <div class="out-line out-detail">
+            {line.pairs.map((pair, index) => (
+              <Fragment>
+                <span class="out-key">{pair.key}</span> <span class="out-value">{pair.value}</span>
+                {index < line.pairs.length - 1 ? ", " : ""}
+              </Fragment>
+            ))}
+          </div>
+        );
+      }
+
+      if (line.kind === "keyed") {
+        return (
+          <div class="out-line out-detail">
+            <span class="out-key">{line.key}</span> {line.text}
+          </div>
+        );
+      }
+
+      if (line.kind === "detail") return <div class="out-line out-detail">{line.text}</div>;
+
+      return <div class="out-line out-meta">{line.text}</div>;
+    })
+  }
+</div>

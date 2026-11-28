@@ -1,0 +1,236 @@
+---
+import { getEntry } from "astro:content";
+import CopyButton from "../components/CopyButton.astro";
+import Jaws from "../components/Jaws.astro";
+import ReviewOutput from "../components/ReviewOutput.astro";
+import { docLink } from "../doc-links.ts";
+import Page from "../layouts/Page.astro";
+
+const landing = await getEntry("readme", "landing");
+const gettingStarted = await docLink("docs");
+const configuration = await docLink("docs/configuration");
+const chatgptPlan = await docLink("docs/chatgpt-plan");
+
+if (landing === undefined) throw new Error("the readme collection has no landing entry");
+
+const { status, commands, sampleCaption, sampleOutput } = landing.data;
+const install = commands.find((command) => command.startsWith("npm install"));
+
+if (install === undefined) throw new Error('README.md: the section "## Quick start" has no "npm install" command');
+
+const steps = [
+  {
+    name: "Change",
+    model: false,
+    text: "Kerpeten takes the diff between the base and HEAD.",
+    out: ["diff"],
+  },
+  {
+    name: "Reviewer",
+    model: true,
+    text: "The reviewer model reads the diff and the rule files, looks into the repository with its read-only tools and reports findings.",
+    out: ["file", "lines", "category", "evidence", "fix"],
+  },
+  {
+    name: "Filter",
+    model: false,
+    text: "Findings that point to a file or to lines that do not exist are dropped.",
+    out: ["kept findings"],
+  },
+  {
+    name: "Judge",
+    model: true,
+    text: "Each finding goes to the judge model in its own call. The judge checks it against the code and labels it.",
+    out: ["verified", "unverified", "refuted"],
+  },
+  {
+    name: "Scorer",
+    model: false,
+    text: "The labels become a score from 0 to 100. The score decides what a posted review would do with the finding.",
+    out: ["inline", "summary", "stored"],
+  },
+];
+
+const traits = [
+  {
+    name: "Two models, not one.",
+    text: "The reviewer finds, the judge doubts. A finding the judge refutes gets a score of 0, so a wrong guess does not look like a real defect.",
+  },
+  {
+    name: "Read-only.",
+    text: "The models can read and search the files of your repository, and nothing else. They cannot change a file or run a command.",
+  },
+  {
+    name: "Your rules.",
+    text: "A change that breaks a rule written in your AGENTS.md or CLAUDE.md is a finding too.",
+  },
+  {
+    name: "No silent fallback.",
+    text: "A missing key stops the review with a clear error. When a limit ends the review early or a long input is cut, Kerpeten reports it. It never switches to another model on its own.",
+  },
+];
+
+const providers = [
+  { name: "anthropic", key: "ANTHROPIC_API_KEY" },
+  { name: "openai", key: "OPENAI_API_KEY" },
+  { name: "openrouter", key: "OPENROUTER_API_KEY" },
+  { name: "chatgpt", key: undefined },
+];
+---
+
+<Page
+  title="Kerpeten: AI code review in your terminal"
+  description="A code review CLI: a reviewer model finds defects in a change, a judge model checks each finding."
+>
+  <section class="hero wrap">
+    <div class="hero-text">
+      <h1>AI code review in your terminal, where a second model checks every finding.</h1>
+      <p class="lead">
+        Kerpeten reads the change on your branch and lets a reviewer model look for defects in it. Then a judge model
+        takes each finding on its own and tries to refute it against the code. What you get is a list of findings, each
+        with a verdict, a score and a note on how to fix it.
+      </p>
+      <div class="hero-actions">
+        <div class="command">
+          <code><span class="prompt" aria-hidden="true">$ </span>{install}</code>
+          <CopyButton text={install} label="Copy the install command" />
+        </div>
+        <a class="button" href={gettingStarted.href}>Read the docs</a>
+      </div>
+      {
+        status !== undefined && (
+          <p class="status">
+            <strong>Status</strong> {status}
+          </p>
+        )
+      }
+    </div>
+    <Jaws />
+  </section>
+
+  <section class="band wrap" id="output">
+    <h2>What a review looks like</h2>
+    <div class="band-body">
+      <div class="terminal">
+        <div class="terminal-bar">
+          <code><span class="prompt" aria-hidden="true">$ </span>kerpeten review --dry-run</code>
+        </div>
+        <ReviewOutput output={sampleOutput} />
+      </div>
+      <p class="caption">{sampleCaption}</p>
+    </div>
+  </section>
+
+  <section class="band wrap" id="how">
+    <h2>How a review works</h2>
+    <div class="band-body">
+      <ol class="pipeline">
+        {
+          steps.map((step, index) => (
+            <li class:list={["step", { "step-model": step.model }]}>
+              <div class="step-rail" aria-hidden="true">
+                <span class="step-node" />
+              </div>
+              <h3>
+                <span class="step-number">{index + 1}</span> {step.name}
+              </h3>
+              <p>{step.text}</p>
+              <ul class="step-out" aria-label="What this step gives">
+                {step.out.map((item) => (
+                  <li>{item}</li>
+                ))}
+              </ul>
+            </li>
+          ))
+        }
+      </ol>
+      <p class="caption">
+        <span class="legend legend-model" aria-hidden="true"></span> a model call
+        <span class="legend legend-plain" aria-hidden="true"></span> no model. Nothing is posted in a dry run, so the action
+        only tells what a posted review would do.
+      </p>
+      <dl class="traits">
+        {
+          traits.map((trait) => (
+            <div>
+              <dt>{trait.name}</dt>
+              <dd>{trait.text}</dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </section>
+
+  <section class="band wrap" id="install">
+    <h2>Install and first run</h2>
+    <div class="band-body install">
+      <ol class="install-steps">
+        <li>
+          Install Kerpeten. It also needs <a href="https://github.com/BurntSushi/ripgrep">ripgrep</a> (<code>rg</code>)
+          on your <code>PATH</code>; the models search your code with it.
+        </li>
+        <li>
+          Run <code>kerpeten init</code> inside the repository you want to review. It asks for the models and the
+          language of the review comments, then writes <code>.kerpeten.yml</code>.
+        </li>
+        <li>
+          Give Kerpeten the key of your provider, or sign in with <code>kerpeten auth login</code> when you chose your
+          ChatGPT plan.
+        </li>
+        <li>Commit your work, then run the review from inside the repository.</li>
+      </ol>
+      <div class="terminal">
+        <div class="terminal-bar">
+          <span>shell</span>
+          <CopyButton text={commands.join("\n")} label="Copy the commands" />
+        </div>
+        <pre class="commands">{commands.map((command) => <code><span class="prompt" aria-hidden="true">$ </span>{command}{"\n"}</code>)}</pre>
+      </div>
+      <p class="caption install-note">
+        The npm package brings a ready binary for Linux (x64 and arm64, glibc) and for macOS (arm64). There is no build
+        yet for Windows, for Intel Macs or for a musl Linux such as Alpine. <a href={gettingStarted.href}>{gettingStarted.title}</a> has the
+        details.
+      </p>
+    </div>
+  </section>
+
+  <section class="band wrap" id="models">
+    <h2>Models</h2>
+    <div class="band-body">
+      <table class="providers">
+        <thead>
+          <tr>
+            <th scope="col">provider</th>
+            <th scope="col">What it needs</th>
+          </tr>
+        </thead>
+        <tbody>
+          {
+            providers.map((provider) => (
+              <tr>
+                <th scope="row">
+                  <code>{provider.name}</code>
+                </th>
+                <td>
+                  {provider.key === undefined ? (
+                    <Fragment>
+                      A sign-in with <code>kerpeten auth login</code>; the requests count against your ChatGPT plan
+                    </Fragment>
+                  ) : (
+                    <code>{provider.key}</code>
+                  )}
+                </td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+      <p class="caption">
+        The reviewer and the judge can be different models. Another endpoint that speaks the API of one of these
+        providers works too. See <a href={configuration.href}>{configuration.title}</a> and{" "}
+        <a href={chatgptPlan.href}>{chatgptPlan.title}</a>.
+      </p>
+    </div>
+  </section>
+</Page>

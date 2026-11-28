@@ -32,3 +32,7 @@ bun run build -- --target linux-x64
 ## Changesets
 
 A pull request that changes what a user of `kerpeten` gets adds a changeset: a small file under `.changeset/` that names the bump (`patch`, `minor` or `major`) and describes the change. `bun run changeset` writes it from a few questions, and [.changeset/README.md](../.changeset/README.md) shows how to write it by hand. The version in `package.json` is never edited by hand: the `release` workflow raises it from these files.
+
+## Website
+
+The website is built from the `website/` folder; its docs pages are the files in `docs/`. [website/README.md](../website/README.md) tells how to run it and how to add a page.

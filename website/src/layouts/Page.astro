@@ -1,0 +1,109 @@
+---
+import "@fontsource-variable/martian-mono/wdth.css";
+import "@fontsource-variable/instrument-sans/index.css";
+import "../styles/tokens.css";
+import "../styles/landing.css";
+import { docLink, docLinks } from "../doc-links.ts";
+import { NPM_URL } from "../navigation.ts";
+import { Repository } from "../source/Repository.ts";
+
+interface Props {
+  title: string;
+  description: string;
+}
+
+const { title, description } = Astro.props;
+const canonical = new URL(Astro.url.pathname, Astro.site);
+const docs = await docLinks();
+const docsHome = await docLink("docs");
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="sitemap" href="/sitemap-index.xml" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:site_name" content="Kerpeten" />
+    <script is:inline>
+      (() => {
+        const stored = typeof localStorage !== "undefined" && localStorage.getItem("starlight-theme");
+        const system = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+
+        document.documentElement.dataset.theme = stored === "light" || stored === "dark" ? stored : system;
+      })();
+    </script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <div class="wrap top-row">
+        <a class="brand" href="/">
+          <img src="/favicon.svg" alt="" width="28" height="28" />
+          <span>Kerpeten</span>
+        </a>
+        <nav class="top-nav" aria-label="Main">
+          <a href={docsHome.href}>Docs</a>
+          <a href={Repository.URL}>GitHub</a>
+          <a href={NPM_URL}>npm</a>
+        </nav>
+        <button class="theme" type="button" data-theme-toggle aria-label="Switch between the dark and the light theme">
+          <svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true">
+            <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.5"></circle>
+            <path d="M10 2.5a7.5 7.5 0 0 1 0 15z" fill="currentColor"></path>
+          </svg>
+        </button>
+      </div>
+    </header>
+    <main id="main">
+      <slot />
+    </main>
+    <footer class="foot">
+      <div class="wrap foot-row">
+        <nav aria-label="Documentation">
+          <h2>Documentation</h2>
+          <ul>
+            {docs.map((doc) => <li><a href={doc.href}>{doc.title}</a></li>)}
+          </ul>
+        </nav>
+        <nav aria-label="Project">
+          <h2>Project</h2>
+          <ul>
+            <li><a href={Repository.URL}>GitHub</a></li>
+            <li><a href={NPM_URL}>npm</a></li>
+            <li><a href={`${Repository.URL}/blob/${Repository.BRANCH}/LICENSE`}>MIT license</a></li>
+          </ul>
+        </nav>
+        <p class="foot-note">Kerpeten is Turkish for pincers. Written by LibirSoft.</p>
+      </div>
+    </footer>
+    <script>
+      const root = document.documentElement;
+
+      for (const button of document.querySelectorAll<HTMLButtonElement>("[data-theme-toggle]")) {
+        button.addEventListener("click", () => {
+          const next = root.dataset.theme === "dark" ? "light" : "dark";
+
+          root.dataset.theme = next;
+          localStorage.setItem("starlight-theme", next);
+        });
+      }
+
+      for (const button of document.querySelectorAll<HTMLButtonElement>("[data-copy]")) {
+        button.addEventListener("click", async () => {
+          await navigator.clipboard.writeText(button.dataset.copy ?? "");
+          button.dataset.copied = "true";
+          window.setTimeout(() => delete button.dataset.copied, 1600);
+        });
+      }
+    </script>
+  </body>
+</html>
