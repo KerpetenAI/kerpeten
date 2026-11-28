@@ -121,6 +121,28 @@ describe("comment texts: the line comment", () => {
   });
 });
 
+describe("comment texts: text that acts", () => {
+  test("a mention and an issue reference in the title, the body or the fix of a finding are code in both comments", () => {
+    const acting = finding({
+      title: "@octocat broke #12",
+      body: "Ask @acme/reviewers about acme/shop#7.\n\n```ts\n@Inject(Foo)\n```",
+      fix: "Revert GH-3 and tell \\@hubot.",
+    });
+
+    const line = english.lineComment(acting).body;
+
+    expect(line).toStartWith("**`@octocat` broke `#12`** · bug · P1\n\n");
+    expect(line).toContain("\n\nAsk `@acme/reviewers` about `acme/shop#7`.\n\n```ts\n@Inject(Foo)\n```\n\n");
+    expect(line).toContain("\n\n**Fix:** Revert `GH-3` and tell `@hubot`.\n\n");
+
+    const summary = english.summary([acting], { lineComments: 0, alreadyWritten: 0 }).body;
+
+    expect(summary).toContain("### `@octocat` broke `#12`\n");
+    expect(summary).toContain("\n\nAsk `@acme/reviewers` about `acme/shop#7`.\n\n");
+    expect(summary).toContain("\n\n**Fix:** Revert `GH-3` and tell `@hubot`.\n\n");
+  });
+});
+
 describe("comment texts: a title beside the program's marks", () => {
   const titles: [string, string][] = [
     ["The path ends in \\", "The path ends in \\"],

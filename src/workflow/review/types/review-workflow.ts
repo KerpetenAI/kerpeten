@@ -14,10 +14,12 @@ import type { Logger } from "../../../log/Logger.ts";
 
 /**
  * What one review run is about, and what belongs to that run alone: its configuration, its two model clients and its
- * log. It is also the values of the run: run components read `repo`, `pathEnv` and `log` with `@RunValue`.
+ * log. It is also the values of the run: run components read `repo`, `pathEnv` and `log` with `@RunValue`. With
+ * `dryRun` a review of a merge request writes nothing to it; without it the review writes its comments.
  */
 export interface ReviewInput {
   readonly repo: string;
+  readonly dryRun: boolean;
   readonly base?: string;
   readonly mr?: number;
   readonly contextFile?: string;
@@ -38,11 +40,25 @@ export interface ReviewedMergeRequest extends MergeRequest {
 /**
  * The result of the review workflow: the local review, and the merge request with the plan of its comments when the
  * review was of one. The action of a finding is then the one the comment plan gives it.
+ *
+ * `unwritten` is there when the review wrote its comments to the merge request: one line for each comment that could
+ * not be written, and no line when all were. `commentPlan` is then the plan as it was carried out, and the findings
+ * carry the refs of their comments.
  */
 export interface ReviewResult extends Omit<LocalReviewResult, "findings"> {
   readonly findings: readonly PlannedFinding[];
   readonly mergeRequest?: ReviewedMergeRequest;
   readonly commentPlan?: CommentPlan;
+  readonly unwritten?: readonly string[];
+}
+
+/**
+ * What a review wrote to its merge request: the comment plan as it was carried out, and one line for each comment
+ * that could not be written.
+ */
+export interface CommentWrite {
+  readonly plan: CommentPlan;
+  readonly failures: readonly string[];
 }
 
 export interface ReportBasis {
@@ -64,6 +80,7 @@ export interface ReviewOutcome {
   readonly judged: JudgeStepResult | undefined;
   readonly findings: readonly JudgedFinding[];
   readonly commentPlan: CommentPlan | undefined;
+  readonly commentWrite: CommentWrite | undefined;
 }
 
 export interface ReviewChange extends ReportBasis {

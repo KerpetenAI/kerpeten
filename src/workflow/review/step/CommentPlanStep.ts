@@ -6,9 +6,9 @@ import type { ScoreStep } from "./ScoreStep.ts";
 
 /**
  * Plans the comments of a review of a merge request: gives every finding the action a posted review would take and
- * writes the texts of the line comments and of the summary comment. It writes nothing to the merge request. A review
- * of no merge request has no plan, and neither has one whose reviewer gave no result, because there is nothing true to
- * say about it.
+ * writes the texts of the line comments and of the summary comment. It writes nothing to the merge request: the
+ * comment write flow step does that, after it. A review of no merge request has no plan, and neither has one whose
+ * reviewer gave no result, because there is nothing true to say about it.
  */
 @FlowStep({
   name: "comment-plan",
