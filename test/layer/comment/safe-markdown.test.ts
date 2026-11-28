@@ -282,7 +282,26 @@ describe("safe markdown: text that acts", () => {
     );
 
     expect(SafeMarkdown.block("&#35;12 &#x23;12 &num;12")).toBe("\\&`#35`;12 \\&#x23;12 \\&num;12");
-    expect(SafeMarkdown.block("a &amp; b &lt; c &#65;")).toBe("a &amp; b &lt; c &`#65`;");
+  });
+
+  test("a character reference that stands for another character stays whole and is shown as that character", () => {
+    const text = "a &amp; b &lt; c &#65;&#66; &#8212; &#x41; &#0065;";
+
+    expect(SafeMarkdown.block(text)).toBe(text);
+    expect(rendered(SafeMarkdown.block(text))).toBe("<p>a &amp; b &lt; c AB — A A</p>\n");
+
+    expect(SafeMarkdown.block("&#65;@octocat &#65;#12 &#65 #12 &#12345678;")).toBe(
+      "&#65;`@octocat` &#65;`#12` &`#65` `#12` &`#12345678`;",
+    );
+  });
+
+  test("the short form GH-12 is code after an underscore or a star of emphasis too, and inside a word it stays", () => {
+    expect(SafeMarkdown.block("_GH-12_ __GH-12__ *GH-12* x_gh-7 (GH-3)")).toBe(
+      "_`GH-12`_ __`GH-12`__ *`GH-12`* x_`gh-7` (`GH-3`)",
+    );
+
+    expect(SafeMarkdown.block("xGH-12 HIGH-12 9GH-1")).toBe("xGH-12 HIGH-12 9GH-1");
+    expect(SafeMarkdown.block("_acme/shop#12_")).toBe("_acme/shop`#12`_");
   });
 
   test("inside code nothing changes: a code span, a fenced block and a plain link keep their @ and #", () => {
@@ -316,6 +335,11 @@ describe("safe markdown: text that acts", () => {
       "Fixes &num;12",
       "Fixes acme/shop#12",
       "Fixes GH-12",
+      "_GH-12_",
+      "__GH-12__",
+      "*GH-12*",
+      "Fixes _#12_",
+      "Fixes _acme/shop#12_",
       "`a` @octocat `b`",
       "` @octocat",
       "@octocat`x`",

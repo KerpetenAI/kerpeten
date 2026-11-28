@@ -46,6 +46,8 @@ export interface FakeIssueComment {
  * - `review`, `summary`, `readBack`: the answer gh gives in place of its own for a review that is sent, for the
  *   summary comment that is made or updated, and for the comments of one review that are read.
  * - `keepsReview`: with `review` set, the review is kept all the same, as when GitHub wrote it and gh did not answer.
+ * - `foreignComments`: the ids of the comments of the conversation that another account wrote: an update of one is
+ *   refused with HTTP 403 and changes nothing.
  */
 export interface FakeGitHubRules {
   readonly refusedLines?: readonly number[];
@@ -54,6 +56,7 @@ export interface FakeGitHubRules {
   readonly summary?: CliAnswer;
   readonly readBack?: CliAnswer;
   readonly keepsReview?: boolean;
+  readonly foreignComments?: readonly number[];
 }
 
 /** One call of the fake gh: its arguments, and what it read from its standard input when it was told to read it. */

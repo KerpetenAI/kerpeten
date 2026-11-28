@@ -327,6 +327,36 @@ describe("comment texts: the summary comment", () => {
     );
   });
 
+  test("findings whose comment failed to be written are counted, and the summary never says that nothing was found beside them", () => {
+    expect(english.summary([], { lineComments: 0, alreadyWritten: 0, unwritten: 2 }).body).toBe(
+      [
+        "## Kerpeten review",
+        `Reviewed commit ${HEAD}. Line comments in this run: 0.`,
+        "Findings whose comment may be missing here, because writing it failed: 2. The output of the review run lists them.",
+        SUMMARY_MARKER,
+      ].join("\n\n"),
+    );
+
+    expect(turkish.summary([], { lineComments: 0, alreadyWritten: 0, unwritten: 1 }).body).toBe(
+      [
+        "## Kerpeten incelemesi",
+        `İncelenen commit: ${HEAD}. Bu çalıştırmadaki satır yorumları: 0.`,
+        "Yazılması başarısız olduğu için yorumu burada eksik olabilecek bulgular: 1. İnceleme çalıştırmasının çıktısında listelenir.",
+        SUMMARY_MARKER,
+      ].join("\n\n"),
+    );
+
+    const listed = english.summary([finding()], { lineComments: 1, alreadyWritten: 0, unwritten: 1 }).body;
+
+    expect(listed).toContain(
+      "Line comments in this run: 1.\n\nFindings whose comment may be missing here, because writing it failed: 1. The output of the review run lists them.\n\n### Division",
+    );
+
+    expect(english.summary([], { lineComments: 0, alreadyWritten: 0, unwritten: 0 }).body).toContain(
+      "The review found nothing to report.",
+    );
+  });
+
   test("a partial review is said with its reason, in both languages", () => {
     const facts = { lineComments: 0, alreadyWritten: 0, partialReason: "time_budget" };
 

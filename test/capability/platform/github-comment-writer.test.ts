@@ -191,11 +191,29 @@ describe("GitHub comment writer: the line comments", () => {
     expect(sentLines(dir)).toEqual([[1, 2, 3]]);
   });
 
-  test("a server error fails the comments of the call, with GitHub's text, and nothing is cut or sent again", async () => {
+  test("a 422 that names no line is no refused line: every comment failed with GitHub's text, and nothing is cut or sent again", async () => {
+    const dir = tempDir();
+    const spam = FakeGitHub.refusal(422, "Unprocessable Entity", ["Review was flagged as spam"]);
+    const github = await writer(dir, { rules: { review: spam } });
+    const write = await github.writeLineComments(12, SHA_A, [onLine(1), onLine(2), onLine(3)]);
+
+    const message =
+      "not written: GitHub refused the request as invalid (HTTP 422): Unprocessable Entity: Review was flagged as spam";
+
+    expect(write.outcomes).toEqual([
+      { kind: "failed", message },
+      { kind: "failed", message },
+      { kind: "failed", message },
+    ]);
+
+    expect(sentLines(dir)).toEqual([[1, 2, 3]]);
+  });
+
+  test("a server error leaves it unknown whether the comments of the call are written, with GitHub's text, and nothing is cut or sent again", async () => {
     const dir = tempDir();
     const github = await writer(dir, { rules: { review: FakeGitHub.refusal(502, "Server Error") } });
     const write = await github.writeLineComments(12, SHA_A, [onLine(1), onLine(2)]);
-    const message = "not written: gh api failed (exit 1): gh: Server Error (HTTP 502)";
+    const message = `it is not known whether GitHub wrote it: gh api failed (exit 1): gh: Server Error (HTTP 502); ${AGAIN}`;
 
     expect(write.outcomes).toEqual([
       { kind: "failed", message },
@@ -203,6 +221,20 @@ describe("GitHub comment writer: the line comments", () => {
     ]);
 
     expect(sentLines(dir)).toEqual([[1, 2]]);
+  });
+
+  test("a request GitHub refused with another status from 400 to 499 wrote nothing for sure", async () => {
+    const dir = tempDir();
+    const github = await writer(dir, { rules: { review: FakeGitHub.refusal(403, FakeGitHub.NOT_YOURS) } });
+
+    expect((await github.writeLineComments(12, SHA_A, [onLine(1)])).outcomes).toEqual([
+      {
+        kind: "failed",
+        message: `not written: GitHub does not let the account gh is signed in to github.com with do this (HTTP 403): ${FakeGitHub.NOT_YOURS}`,
+      },
+    ]);
+
+    expect(sentLines(dir)).toEqual([[1]]);
   });
 
   test("after the time limit it is not known whether GitHub wrote the comments, and the message says so", async () => {
@@ -329,6 +361,32 @@ describe("GitHub comment writer: the line comments", () => {
     ]);
   });
 
+  test("two comments on the same lines share a marker: each gets the id of the comment with its own text, whatever the order they are read in", async () => {
+    const dir = tempDir();
+    const marker = onLine(2).marker;
+    const first = { file: "src/a.ts", startLine: 2, endLine: 2, body: `First finding.\n${marker}`, marker };
+    const second = { ...first, body: `Second finding.\n${marker}` };
+    const third = { ...first, body: `Third finding.\n${marker}` };
+
+    const listed = [
+      { id: 82, body: `${second.body}\n` },
+      { id: 83, body: `GitHub changed the third text.\n${marker}` },
+      { id: 81, body: first.body },
+    ];
+
+    const github = await writer(dir, { rules: { readBack: { stdout: JSON.stringify([listed]) } } });
+    const write = await github.writeLineComments(12, SHA_A, [first, second, third]);
+
+    expect(write).toEqual({
+      outcomes: [
+        { kind: "written", ref: "github:review_comment/81" },
+        { kind: "written", ref: "github:review_comment/82" },
+        { kind: "written", ref: "github:review_comment/83" },
+      ],
+      problems: [],
+    });
+  });
+
   test("a number, a commit, a place or a text that cannot be right is refused before gh is called", async () => {
     const dir = tempDir();
     const github = await writer(dir);
@@ -410,28 +468,49 @@ describe("GitHub comment writer: the summary comment", () => {
     expect(gitHub(dir).calls).toEqual([]);
   });
 
-  test("a summary GitHub refuses, one it fails at and one that is gone are failed with the reason", async () => {
+  test("a summary GitHub refuses as invalid wrote nothing; one it fails at leaves it unknown", async () => {
     const invalid = await writer(tempDir(), {
       rules: { summary: FakeGitHub.refusal(422, "Validation Failed", ["Body is too long"]) },
     });
 
     expect(await invalid.writeSummary(12, "text")).toEqual({
       kind: "failed",
-      message: "not written: GitHub refused it as invalid: Validation Failed: Body is too long",
+      message: "not written: GitHub refused the request as invalid (HTTP 422): Validation Failed: Body is too long",
     });
 
     const failing = await writer(tempDir(), { rules: { summary: FakeGitHub.refusal(500, "Server Error") } });
 
     expect(await failing.writeSummary(12, "text", "github:issue_comment/77")).toEqual({
       kind: "failed",
-      message: "not written: gh api failed (exit 1): gh: Server Error (HTTP 500)",
+      message: `it is not known whether GitHub wrote it: gh api failed (exit 1): gh: Server Error (HTTP 500); ${AGAIN}`,
+    });
+  });
+
+  test("an update GitHub does not let this account make, and one of a comment that is gone, are refused and change nothing", async () => {
+    const dir = tempDir();
+    const other = { id: 77, user: { login: "another-account" }, body: "their text", created_at: FakeGitHub.NOW };
+    const github = await writer(dir, { conversation: [other], rules: { foreignComments: [77] } });
+
+    expect(await github.writeSummary(12, "new text", "github:issue_comment/77")).toEqual({
+      kind: "refused",
+      reason: `not written: GitHub does not let the account gh is signed in to github.com with do this (HTTP 403): ${FakeGitHub.NOT_YOURS}`,
     });
 
-    const gone = await writer(tempDir());
-    const answer = await gone.writeSummary(12, "text", "github:issue_comment/77");
+    expect(await github.writeSummary(12, "new text", "github:issue_comment/78")).toEqual({
+      kind: "refused",
+      reason:
+        "not written: GitHub did not find what the write is for (HTTP 404): pull request 12 or the comment was removed, or the account gh is signed in to github.com with may not write to Acme/Shop",
+    });
 
-    expect(answer.kind === "failed" ? answer.message : "").toStartWith(
-      "not written: GitHub did not find what the write is for (HTTP 404)",
-    );
+    expect(gitHub(dir).conversation).toEqual([other]);
+  });
+
+  test("a new summary comment GitHub does not let this account make is a failed write, not a refused update", async () => {
+    const denied = await writer(tempDir(), { rules: { summary: FakeGitHub.refusal(403, FakeGitHub.NOT_YOURS) } });
+
+    expect(await denied.writeSummary(12, "text")).toEqual({
+      kind: "failed",
+      message: `not written: GitHub does not let the account gh is signed in to github.com with do this (HTTP 403): ${FakeGitHub.NOT_YOURS}`,
+    });
   });
 });

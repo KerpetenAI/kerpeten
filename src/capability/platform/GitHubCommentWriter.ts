@@ -45,10 +45,13 @@ import type {
  * The line comments go to GitHub as one review at the commit the review was of. When GitHub refuses the review as
  * invalid, it wrote nothing; the list is then cut in two and each half is sent as its own review, until a refused
  * comment stands alone. That comment is `refused`; the others end up written. Any other failure makes the comments of
- * that call `failed`, and nothing is cut or sent again. `GitHubWriteAnswer` says which answer is which. GitHub gives
- * no ids when it takes a review, so the comments of a written review are read back and each is known by the marker
- * its text ends with; when they cannot be read back, the comments are written all the same and carry the ref of the
- * review.
+ * that call `failed`, and nothing is cut or sent again; so does a refusal that names no place of a comment.
+ * `GitHubWriteAnswer` says which answer is which. GitHub gives no ids when it takes a review, so the comments of a
+ * written review are read back and each is known by its text, or by the marker its text ends with; when they cannot
+ * be read back, the comments are written all the same and carry the ref of the review.
+ *
+ * A summary comment that is there is updated. When GitHub does not let the account change that comment, or the
+ * comment is gone, the write is `refused` and nothing is written: the caller may then try another or make a new one.
  */
 @Capability({
   name: "github-comment-writer",
@@ -104,6 +107,33 @@ export class GitHubCommentWriter extends GitHubCli implements PlatformWriter {
     }
 
     return ref;
+  }
+
+  /**
+   * The id of the comment among `read` that each of `comments` is, in the order of `comments`, or `undefined` for one
+   * that is not there. A read comment stands for one sent comment only. A comment is found by its whole text first,
+   * and by the marker its text ends with when the platform changed the text. So two comments on the same lines, which
+   * share a marker, each get their own id as long as their texts differ.
+   */
+  private static matched(
+    comments: readonly PlatformLineComment[],
+    read: readonly GitHubWrittenComment[],
+  ): (number | undefined)[] {
+    const left = [...read];
+    const found: (number | undefined)[] = comments.map(() => undefined);
+
+    const take = (same: (comment: PlatformLineComment, candidate: GitHubWrittenComment) => boolean): void => {
+      for (const [index, comment] of comments.entries()) {
+        const at = found[index] === undefined ? left.findIndex((candidate) => same(comment, candidate)) : -1;
+
+        if (at >= 0) found[index] = left.splice(at, 1)[0]?.id;
+      }
+    };
+
+    take((comment, candidate) => candidate.body.trimEnd() === comment.body.trimEnd());
+    take((comment, candidate) => candidate.body.trimEnd().endsWith(comment.marker));
+
+    return found;
   }
 
   /** The outcome of a write that could not be sent at all; an error that is no platform error is thrown again. */
@@ -162,6 +192,12 @@ export class GitHubCommentWriter extends GitHubCli implements PlatformWriter {
       return { kind: "failed", message: `not written: GitHub refused it as invalid: ${answer.reason}` };
     }
 
+    if (answer.kind === "denied") {
+      return ref === undefined
+        ? { kind: "failed", message: answer.message }
+        : { kind: "refused", reason: answer.message };
+    }
+
     if (answer.kind === "failed") return answer;
 
     return {
@@ -185,7 +221,11 @@ export class GitHubCommentWriter extends GitHubCli implements PlatformWriter {
 
     if (answer.kind === "written") return this.readBack(target, answer.id, comments);
 
-    if (answer.kind === "failed") return { outcomes: comments.map(() => answer), problems: [] };
+    if (answer.kind === "failed" || answer.kind === "denied") {
+      const failed: FailedWrite = { kind: "failed", message: answer.message };
+
+      return { outcomes: comments.map(() => failed), problems: [] };
+    }
 
     if (comments.length === 1) return { outcomes: [{ kind: "refused", reason: answer.reason }], problems: [] };
 
@@ -201,8 +241,8 @@ export class GitHubCommentWriter extends GitHubCli implements PlatformWriter {
 
   /**
    * The outcomes of the comments of the written review `review`: each with the ref of its comment, found among the
-   * comments of the review by the marker its text ends with. A comment that is not found there is written all the
-   * same and gets the ref of the review; one line of `problems` says so.
+   * comments of the review by its text or by the marker its text ends with. A comment that is not found there is
+   * written all the same and gets the ref of the review; one line of `problems` says so.
    */
   private async readBack(
     target: GitHubReviewTarget,
@@ -221,21 +261,17 @@ export class GitHubCommentWriter extends GitHubCli implements PlatformWriter {
       read = { items: [], problems: [`${path}: ${error.message}`] };
     }
 
-    const left = [...read.items];
     const reviewRef = CommentRef.of("github", "review", review).text;
-    let unknown = 0;
 
-    const outcomes = comments.map((comment): LineCommentOutcome => {
-      const at = left.findIndex((candidate) => candidate.body.trimEnd().endsWith(comment.marker));
-      const [found] = at < 0 ? [] : left.splice(at, 1);
+    const found = GitHubCommentWriter.matched(comments, read.items);
+    const unknown = found.filter((id) => id === undefined).length;
 
-      if (found === undefined) unknown++;
-
-      return {
+    const outcomes = found.map(
+      (id): LineCommentOutcome => ({
         kind: "written",
-        ref: found === undefined ? reviewRef : CommentRef.of("github", "review_comment", found.id).text,
-      };
-    });
+        ref: id === undefined ? reviewRef : CommentRef.of("github", "review_comment", id).text,
+      }),
+    );
 
     if (unknown === 0) return { outcomes, problems: [] };
 

@@ -41,9 +41,12 @@ import { WrittenFindings } from "./WrittenFindings.ts";
  * 6. `afterLineComments`, once the line comments were given to the platform: a finding whose line comment is written
  *    keeps `inline` and carries the ref of that comment. One whose lines the platform refused goes to the summary.
  *    One whose write failed is stored. The summary text is written again, so its count of line comments and its
- *    findings say what is really there.
- * 7. `afterSummary`, once the summary comment was given to the platform: every finding of the summary carries the
- *    ref of the summary comment. When the summary could not be written, its findings are stored.
+ *    findings say what is really there, and it counts the findings whose write failed: a summary never says that
+ *    the review found nothing while such a finding exists.
+ * 7. `afterSummary`, once the summary comment was given to the platform: every finding the summary text shows
+ *    carries the ref of the summary comment. A finding the text leaves out because the comment would be too long is
+ *    stored: a finding has a ref only when its text is in the comment. When the summary could not be written, all
+ *    its findings are stored.
  */
 @Service("kerpeten:comment-planner")
 export class CommentPlanner {
@@ -142,6 +145,7 @@ export class CommentPlanner {
       summary: texts.summary(listed, {
         lineComments: lineComments.length,
         alreadyWritten: plan.counts.duplicate,
+        unwritten: results.filter((written) => written.kind === "failed").length,
         ...(input.partialReason === undefined ? {} : { partialReason: input.partialReason }),
       }),
       counts: {
@@ -154,22 +158,33 @@ export class CommentPlanner {
   }
 
   /**
-   * The plan after its summary comment was given to the platform: with `ref`, the ref of the written summary comment,
-   * every finding of the summary carries it; without one the summary was not written, and its findings are stored.
+   * The plan after its summary comment was given to the platform. With `ref`, the ref of the written summary comment,
+   * every finding the summary text shows carries it; the findings the text leaves out, the last ones in the order of
+   * the summary, are stored. Without a ref the summary was not written, and all its findings are stored.
    */
   public afterSummary(plan: CommentPlan, ref: string | undefined): CommentPlan {
-    const findings = plan.findings.map((finding) => {
+    const listed = plan.findings
+      .map((finding, index) => ({ finding, index }))
+      .filter((entry) => entry.finding.action === "summary")
+      .sort((one, other) => CommentPlanner.byRank(one.finding, other.finding));
+
+    const shown = new Set(
+      listed.slice(0, ref === undefined ? 0 : listed.length - plan.summary.omitted).map((entry) => entry.index),
+    );
+
+    const findings = plan.findings.map((finding, index) => {
       if ("judge_error" in finding || finding.action !== "summary") return finding;
 
-      return ref === undefined ? CommentPlanner.planned(finding, "stored") : { ...finding, comment_ref: ref };
+      return ref !== undefined && shown.has(index)
+        ? { ...finding, comment_ref: ref }
+        : CommentPlanner.planned(finding, "stored");
     });
-
-    if (ref !== undefined) return { ...plan, findings, summary: { ...plan.summary, ref } };
 
     return {
       ...plan,
       findings,
-      counts: { ...plan.counts, summary: 0, stored: plan.counts.stored + plan.counts.summary },
+      summary: ref === undefined ? plan.summary : { ...plan.summary, ref },
+      counts: { ...plan.counts, summary: shown.size, stored: plan.counts.stored + listed.length - shown.size },
     };
   }
 

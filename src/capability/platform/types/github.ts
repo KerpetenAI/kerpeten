@@ -29,16 +29,19 @@ export type GitHubWriteError = z.infer<typeof githubWriteErrorSchema>;
  * How GitHub answered a write of gh:
  *
  * - `written`: GitHub took it, and `id` is the id of what it made or changed.
- * - `invalid`: GitHub refused the request as one it cannot take (HTTP 422) and wrote nothing; for a review, a comment
- *   on a line that is not in the diff is such a request. `reason` is GitHub's own text.
+ * - `invalid`: GitHub refused the request with HTTP 422 because it cannot find the place of a comment, and wrote
+ *   nothing; a comment on a line that is not in the diff is such a request. `reason` is GitHub's own text.
+ * - `denied`: GitHub answered that the account may not do this (HTTP 403) or that what the write is for is not there
+ *   (HTTP 404), and wrote nothing. `message` says so, with what to do.
  * - `failed`: anything else; `message` says what happened and what to do, with GitHub's own text in it.
  */
 export type GitHubWriteResult =
   | { readonly kind: "written"; readonly id: number }
   | { readonly kind: "invalid"; readonly reason: string }
+  | { readonly kind: "denied"; readonly message: string }
   | FailedWrite;
 
-/** A request GitHub refuses as invalid for a reason that no line of a comment causes: how its answer is known, and what to do. */
+/** A request GitHub refuses as invalid for a reason that no place of a comment causes: how its answer is known, and what to do. */
 export interface GitHubBlock {
   readonly answer: RegExp;
   readonly advice: string;

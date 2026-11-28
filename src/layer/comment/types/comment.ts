@@ -145,10 +145,14 @@ export interface LineWriteInput {
   readonly partialReason?: string;
 }
 
-/** What the summary comment says beside its findings. */
+/**
+ * What the summary comment says beside its findings. `unwritten` counts the findings whose line comment was given to
+ * the platform and failed; it is left out before anything is written.
+ */
 export interface SummaryFacts {
   readonly lineComments: number;
   readonly alreadyWritten: number;
+  readonly unwritten?: number;
   readonly partialReason?: string;
 }
 
@@ -161,6 +165,7 @@ export interface CommentWordSet {
   readonly untitled: string;
   readonly cut: string;
   reviewed(commit: string, lineComments: number, alreadyWritten: number): string;
+  unwritten(count: number): string;
   partial(reason: string): string;
   omitted(count: number): string;
 }

@@ -2,10 +2,11 @@ import { Inject } from "@asenajs/ioc";
 import { type After, FlowStep, FlowStepBase, Use } from "@kerpetensh/harness-kit";
 import { CommentRef } from "../../../capability/platform/CommentRef.ts";
 import { PlatformChoice } from "../../../capability/platform/PlatformChoice.ts";
-import type { PlatformLineComment } from "../../../capability/platform/types/platform.ts";
+import type { PlatformLineComment, PlatformWriter, SummaryWrite } from "../../../capability/platform/types/platform.ts";
 import { CommentMarker } from "../../../layer/comment/CommentMarker.ts";
 import { CommentPlanner } from "../../../layer/comment/CommentPlanner.ts";
 import type { LineComment, WrittenComment } from "../../../layer/comment/types/comment.ts";
+import type { Logger } from "../../../log/Logger.ts";
 import { terminalLine } from "../../../text/text-utils.ts";
 import type { CommentWrite } from "../types/review-workflow.ts";
 import type { CommentPlanStep } from "./CommentPlanStep.ts";
@@ -19,14 +20,28 @@ import type { CommentPlanStep } from "./CommentPlanStep.ts";
  *
  * 1. The line comments go to the platform in one write. Each comes back written with its ref, refused, or failed.
  * 2. The plan is made final from that, by the comment planner: a refused finding goes to the summary, a failed one is
- *    stored, and the summary text is written again so that it says what is really on the merge request.
+ *    stored, and the summary text is written again so that it says what is really on the merge request, the count of
+ *    the findings whose write failed among it.
  * 3. The summary comment is written last. There is one per merge request: when the comments read at the start hold a
  *    summary comment of Kerpeten, known by its marker, that one gets the new text, otherwise one is made. A review
- *    without findings writes it too. When it cannot be written, its findings are stored.
+ *    without findings writes it too. When it cannot be written, its findings are stored; so is a finding the summary
+ *    text leaves out because the comment would be too long.
+ *
+ * A comment is Kerpeten's by its marker, never by its author, so the summary comment that is there may be one this
+ * account cannot change: it was written from another account, and the platform lets only some accounts change the
+ * comments of others. No author is read to find that out. The platform's answer says it: when it refuses the update
+ * of a summary comment, or the comment is gone, the next summary comment is tried, and when none is left a new one is
+ * made. Each such comment is logged as a warning. So the summary is written, and the merge request then holds a
+ * summary comment per account that cannot change the other's.
  *
  * A comment that cannot be written does not stop the others. Each is logged and gives one line of `failures`, which
  * the command reports and ends with 1 for. A refused line comment is no failure: its finding is in the summary. A
  * second run writes no line comment twice, because the comments of the first are known by their markers.
+ *
+ * Runs of one merge request are not kept apart. The comments that are there are read at the start of a run, before
+ * the models are called, and nothing is locked: two runs that overlap can both write the line comment of a finding
+ * and can both make a summary comment. Nothing is lost by it. A later run takes both line comments as written, updates
+ * the first summary comment and logs a warning that names the other.
  */
 @FlowStep({
   name: "comment-write",
@@ -113,34 +128,68 @@ export class CommentWriteStep extends FlowStepBase {
       ...(partialReason === undefined ? {} : { partialReason }),
     });
 
-    const [existing, ...others] = CommentWriteStep.summaries(written);
+    const summaries = CommentWriteStep.summaries(written);
+    const summary = await this.writeSummary(writer, number, afterLines.summary.body, summaries, log);
+    const summaryRef = summary.kind === "written" ? summary.ref : undefined;
 
-    if (others.length > 0) {
-      log.warn("more than one summary comment is on the merge request, the first is updated", {
-        updated: existing,
-        left: others.join(","),
+    if (summary.kind !== "written") {
+      const error = summary.kind === "failed" ? summary.message : summary.reason;
+
+      log.error("summary comment failed, its findings are stored", { error });
+      failures.push(`summary comment: ${terminalLine(error)}`);
+    }
+
+    if (summaries.length > 1) {
+      log.warn("more than one summary comment is on the merge request", {
+        updated: summaryRef,
+        all: summaries.join(","),
       });
     }
 
-    const summary = await writer.writeSummary(number, afterLines.summary.body, existing);
-
-    if (summary.kind === "failed") {
-      log.error("summary comment failed, its findings are stored", { error: summary.message });
-      failures.push(`summary comment: ${terminalLine(summary.message)}`);
+    if (summaryRef !== undefined && afterLines.summary.omitted > 0) {
+      log.warn("summary comment does not show every finding, the ones left out are stored", {
+        omitted: afterLines.summary.omitted,
+      });
     }
 
-    const plan = this.planner.afterSummary(afterLines, summary.kind === "written" ? summary.ref : undefined);
+    const plan = this.planner.afterSummary(afterLines, summaryRef);
 
     log.info("comments written", {
       line_comments: plan.lineComments.length,
       refused: lines.outcomes.filter((outcome) => outcome.kind === "refused").length,
       failed: lines.outcomes.filter((outcome) => outcome.kind === "failed").length,
-      summary: summary.kind === "failed" ? "failed" : summary.updated ? "updated" : "created",
-      summary_ref: summary.kind === "failed" ? undefined : summary.ref,
+      summary: summary.kind !== "written" ? "failed" : summary.updated ? "updated" : "created",
+      summary_ref: summaryRef,
     });
 
     const commentWrite: CommentWrite = { plan, failures };
 
     return { commentWrite };
+  }
+
+  /**
+   * Writes the summary comment with the text `body`: updates the first of `summaries`, the summary comments that are
+   * on the merge request, that the platform lets this account change, and makes a new one when there is none or none
+   * can be changed. A comment the platform refuses to change is logged and left as it is.
+   */
+  private async writeSummary(
+    writer: PlatformWriter,
+    number: number,
+    body: string,
+    summaries: readonly string[],
+    log: Logger,
+  ): Promise<SummaryWrite> {
+    for (const existing of summaries) {
+      const updated = await writer.writeSummary(number, body, existing);
+
+      if (updated.kind !== "refused") return updated;
+
+      log.warn("summary comment cannot be updated by this account, another one is written", {
+        comment: existing,
+        reason: updated.reason,
+      });
+    }
+
+    return writer.writeSummary(number, body);
   }
 }

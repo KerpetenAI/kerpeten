@@ -14,7 +14,8 @@ import type { CodeFence } from "./types/comment.ts";
  *   comment is sent from, and a reference to an issue or a pull request (`#12`, `owner/repo#12`, `owner#12`,
  *   `GH-12`), which would link it and leave a note there. A backslash before such an `@` or `#` is dropped, because
  *   the platform looks for them in the text as it is shown. A character reference that stands for `@` or `#`, such
- *   as `&#64;`, gets a backslash, so it is shown as written and makes neither. The address of a link that holds such
+ *   as `&#64;`, gets a backslash, so it is shown as written and makes neither; any other character reference, such as
+ *   `&#65;`, stays whole, so its number is not taken for an issue. The address of a link that holds such
  *   text is cut by the code span, and the link is then shown as text. Two code spans cannot touch, because their
  *   backticks would be read as one mark: where such a code span would touch another, a zero-width space stands
  *   between the two.
@@ -67,9 +68,13 @@ export class SafeMarkdown {
   private static readonly ISSUE = /#[0-9](?:[A-Za-z0-9_]*[A-Za-z0-9])?/y;
 
   private static readonly NAMED_ISSUE =
-    /[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_.-]+)?#[0-9](?:[A-Za-z0-9_]*[A-Za-z0-9])?|GH-[0-9]+/iy;
+    /[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_.-]+)?#[0-9](?:[A-Za-z0-9_]*[A-Za-z0-9])?/y;
+
+  private static readonly SHORT_ISSUE = /GH-[0-9]+/iy;
 
   private static readonly ACTING_REFERENCE = /&(?:#0*(?:64|35);|#[xX]0*(?:40|23);|commat;|num;)/y;
+
+  private static readonly DECIMAL_REFERENCE = /&#[0-9]{1,7};/y;
 
   /** Text of one or more lines that starts at the start of a line. */
   public static block(text: string): string {
@@ -170,6 +175,7 @@ export class SafeMarkdown {
       const next = line.charAt(at + 1);
       const escaped = char === "\\" && (next === "@" || next === "#");
       const acting = SafeMarkdown.acting(line, escaped ? at + 1 : at, last);
+      const reference = char === "&" ? SafeMarkdown.matched(SafeMarkdown.DECIMAL_REFERENCE, line, at) : undefined;
 
       if (acting !== undefined) {
         span(`\`${acting}\``);
@@ -177,6 +183,9 @@ export class SafeMarkdown {
       } else if (char === "&" && SafeMarkdown.matched(SafeMarkdown.ACTING_REFERENCE, line, at) !== undefined) {
         text("\\&");
         at += 1;
+      } else if (reference !== undefined) {
+        text(reference);
+        at += reference.length;
       } else if (char === "\\" && next !== "" && SafeMarkdown.PUNCTUATION.includes(next)) {
         text(char + next);
         at += 2;
@@ -207,8 +216,9 @@ export class SafeMarkdown {
   /**
    * The text that starts at `at` and would act on the platform when it is shown: a mention, or a reference to an
    * issue. `before` is the character written before it. An `@` right after a letter or a digit, as in a mail address,
-   * is no mention; after anything else it is one, also after a `_` or a `*`, which may be a mark that is not shown. A
-   * reference with a name before the `#` is taken whole, from the start of the name.
+   * is no mention; after anything else it is one, also after a `_` or a `*`, which may be a mark that is not shown.
+   * The same holds for the short form `GH-12`. A reference with a name before the `#` is taken whole from the start
+   * of the name; where the name starts after a `_`, `.`, `/` or `-`, the `#` and its number are taken alone.
    */
   private static acting(line: string, at: number, before: string): string | undefined {
     const char = line.charAt(at);
@@ -219,9 +229,15 @@ export class SafeMarkdown {
 
     if (char === "#") return SafeMarkdown.matched(SafeMarkdown.ISSUE, line, at);
 
-    const inName = SafeMarkdown.isWord(before) || (before !== "" && SafeMarkdown.NAME_MARKS.includes(before));
+    if (!SafeMarkdown.isWord(char) || SafeMarkdown.isWord(before)) return undefined;
 
-    return SafeMarkdown.isWord(char) && !inName ? SafeMarkdown.matched(SafeMarkdown.NAMED_ISSUE, line, at) : undefined;
+    const short = SafeMarkdown.matched(SafeMarkdown.SHORT_ISSUE, line, at);
+
+    if (short !== undefined) return short;
+
+    return before !== "" && SafeMarkdown.NAME_MARKS.includes(before)
+      ? undefined
+      : SafeMarkdown.matched(SafeMarkdown.NAMED_ISSUE, line, at);
   }
 
   /** Whether `char` is an ASCII letter or digit. */

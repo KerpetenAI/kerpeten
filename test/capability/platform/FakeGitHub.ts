@@ -24,10 +24,13 @@ export class FakeGitHub {
 
   public static readonly NOW = "2026-11-28T10:00:00Z";
 
-  public static readonly NOT_IN_DIFF =
-    "Pull request review thread line must be part of the diff and Pull request review thread diff hunk can't be blank";
+  public static readonly NOT_IN_DIFF = "Line could not be resolved";
+
+  public static readonly REVIEW_DOCS = "https://docs.github.com/rest/pulls/reviews#create-a-review-for-a-pull-request";
 
   public static readonly PENDING = "User can only have one pending review per pull request";
+
+  public static readonly NOT_YOURS = "Resource not accessible by personal access token";
 
   private static readonly UNKNOWN_EXIT = 97;
 
@@ -62,10 +65,18 @@ export class FakeGitHub {
     return answer.exitCode ?? 0;
   }
 
-  /** What gh answers for a request GitHub refused with `status`: the body on stdout and one line on stderr. */
+  /**
+   * What gh answers for a request GitHub refused with `status`: the body on stdout, in the form GitHub gave for a
+   * review with a line outside the diff, and one line on stderr.
+   */
   public static refusal(status: number, message: string, errors: readonly string[] = []): CliAnswer {
     return {
-      stdout: JSON.stringify({ message, ...(errors.length === 0 ? {} : { errors }), status: String(status) }),
+      stdout: JSON.stringify({
+        message,
+        ...(errors.length === 0 ? {} : { errors }),
+        documentation_url: FakeGitHub.REVIEW_DOCS,
+        status: String(status),
+      }),
       stderr: `gh: ${message} (HTTP ${status})\n`,
       exitCode: 1,
     };
@@ -204,6 +215,8 @@ export class FakeGitHub {
     const comment = this.state.conversation.find((candidate) => candidate.id === id);
 
     if (comment === undefined) return FakeGitHub.refusal(404, "Not Found");
+
+    if (this.state.rules.foreignComments?.includes(id) === true) return FakeGitHub.refusal(403, FakeGitHub.NOT_YOURS);
 
     comment.body = body;
 

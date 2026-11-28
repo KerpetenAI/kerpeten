@@ -16,7 +16,7 @@ import {
   glabCalls,
   pullJson,
 } from "../capability/platform/platform-utils.ts";
-import type { FakeGitHubRules } from "../capability/platform/types/fake-github.ts";
+import type { FakeGitHubRules, FakeIssueComment } from "../capability/platform/types/fake-github.ts";
 import { mockClient } from "../test-utils.ts";
 
 const KEY = "sk-test-secret-value-123";
@@ -81,6 +81,11 @@ const JUDGED = [{ text: "done" }, { text: JSON.stringify(labels) }];
 
 const JUDGED_HIGH = [{ text: "done" }, { text: JSON.stringify({ ...labels, priority: "P0", nature: "critical" }) }];
 
+const AGAIN = "run again: what is already written is not written a second time";
+
+const UNWRITTEN =
+  "Findings whose comment may be missing here, because writing it failed: 1. The output of the review run lists them.";
+
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -117,7 +122,7 @@ function repo(origin: string = GITHUB_ORIGIN): { dir: string; base: string; head
 /**
  * Runs the command in `cwd` with the fake GitHub first on the PATH, and a fake glab without answers beside it. With
  * `bin`, the folder of an earlier run, the GitHub of that run is used as that run left it; without it a new one
- * starts with pull request 12 at `head` and with `rules`.
+ * starts with pull request 12 at `head`, with `rules` and with the comments `conversation` in its conversation.
  */
 async function run(
   cwd: string,
@@ -126,6 +131,7 @@ async function run(
     head?: string;
     base?: string;
     rules?: FakeGitHubRules;
+    conversation?: readonly FakeIssueComment[];
     bin?: string;
     script?: Parameters<typeof mockClient>[0];
     judgeScript?: Parameters<typeof mockClient>[0];
@@ -144,7 +150,12 @@ async function run(
       ...(options.base === undefined ? {} : { baseSha: options.base }),
     });
 
-    fakeGitHub(bin, { pull, ...(options.rules === undefined ? {} : { rules: options.rules }) });
+    fakeGitHub(bin, {
+      pull,
+      ...(options.rules === undefined ? {} : { rules: options.rules }),
+      ...(options.conversation === undefined ? {} : { conversation: options.conversation }),
+    });
+
     fakeCli(bin, "glab", {});
   }
 
@@ -369,7 +380,7 @@ describe("kerpeten review --mr: a comment that cannot be written", () => {
     );
   });
 
-  test("a line comment that fails leaves its finding stored: the findings are printed, one line on stderr says what was not written, and the review ends with 1", async () => {
+  test("a line comment that fails leaves its finding stored: the findings are printed, one line on stderr says what was not written, the summary counts it and does not say that nothing was found, and the review ends with 1", async () => {
     const { dir, base, head } = repo();
     const rules = { review: FakeGitHub.refusal(502, "Server Error") };
     const result = await run(dir, ["review", "--mr", "12"], { head, base, rules });
@@ -384,7 +395,7 @@ describe("kerpeten review --mr: a comment that cannot be written", () => {
     ]);
 
     expect(reported(result.err)).toEqual([
-      "kerpeten review: line comment on src/a.ts:2: not written: gh api failed (exit 1): gh: Server Error (HTTP 502)",
+      `kerpeten review: line comment on src/a.ts:2: it is not known whether GitHub wrote it: gh api failed (exit 1): gh: Server Error (HTTP 502); ${AGAIN}`,
     ]);
 
     const github = gitHub(result.bin);
@@ -395,7 +406,7 @@ describe("kerpeten review --mr: a comment that cannot be written", () => {
       [
         "## Kerpeten review",
         `Reviewed commit ${head}. Line comments in this run: 0.`,
-        "The review found nothing to report.",
+        UNWRITTEN,
         `<!-- kerpeten:summary v1 head=${head} -->`,
       ].join("\n\n"),
     ]);
@@ -421,7 +432,7 @@ describe("kerpeten review --mr: a comment that cannot be written", () => {
     expect(result.out).toContain("score 95, action inline, comment_ref github:review_comment/9002");
 
     expect(reported(result.err)).toEqual([
-      "kerpeten review: summary comment: not written: gh api failed (exit 1): gh: Server Error (HTTP 500)",
+      `kerpeten review: summary comment: it is not known whether GitHub wrote it: gh api failed (exit 1): gh: Server Error (HTTP 500); ${AGAIN}`,
     ]);
 
     expect(gitHub(result.bin).lineComments.length).toBe(1);
@@ -434,6 +445,81 @@ describe("kerpeten review --mr: a comment that cannot be written", () => {
     expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["stored"]);
     expect("comment_ref" in printed.findings[0]).toBe(false);
     expect("comment_ref" in printed.comment_plan.summary).toBe(false);
+  });
+
+  test("a review GitHub refuses as invalid for a reason that names no line is a failed write: it is sent once, reported with GitHub's text, and the review ends with 1", async () => {
+    const { dir, base, head } = repo();
+    const rules = { review: FakeGitHub.refusal(422, "Unprocessable Entity", ["Review was flagged as spam"]) };
+    const result = await run(dir, ["review", "--mr", "12"], { head, base, rules });
+
+    expect(result.code).toBe(ExitCode.FAILED);
+    expect(result.out).toContain("score 95, action stored");
+
+    expect(reported(result.err)).toEqual([
+      "kerpeten review: line comment on src/a.ts:2: not written: GitHub refused the request as invalid (HTTP 422): Unprocessable Entity: Review was flagged as spam",
+    ]);
+
+    expect(gitHubWrites(result.bin).map((call) => call.args.at(-3))).toEqual([`${PULL}/reviews`, CONVERSATION]);
+    expect(gitHub(result.bin).conversation[0]?.body).toContain(UNWRITTEN);
+    expect(gitHub(result.bin).conversation[0]?.body).not.toContain("nothing to report");
+  });
+
+  test("a summary comment of another account that GitHub does not let this account change is left: a new summary is written, and the next run updates that one", async () => {
+    const { dir, base, head } = repo();
+
+    const theirs = {
+      id: 77,
+      user: { login: "another-account" },
+      body: `## Kerpeten review\n\nTheir review.\n\n<!-- kerpeten:summary v1 head=${"c".repeat(40)} -->`,
+      created_at: FakeGitHub.NOW,
+    };
+
+    const first = await run(dir, ["review", "--mr", "12"], {
+      head,
+      base,
+      conversation: [theirs],
+      rules: { foreignComments: [77] },
+    });
+
+    expect(first.code).toBe(ExitCode.OK);
+    expect(first.out).toContain("comments written: 1 line comments, summary comment github:issue_comment/9003");
+    expect(reported(first.err)).toEqual([]);
+
+    expect(first.err).toContain(
+      `WARN "summary comment cannot be updated by this account, another one is written" command=review comment=github:issue_comment/77 reason="not written: GitHub does not let the account gh is signed in to github.com with do this (HTTP 403): ${FakeGitHub.NOT_YOURS}"`,
+    );
+
+    expect(gitHubWrites(first.bin).map((call) => call.args.slice(2, 3).concat(call.args.at(-3) ?? ""))).toEqual([
+      ["POST", `${PULL}/reviews`],
+      ["PATCH", "repos/Acme/Shop/issues/comments/77"],
+      ["POST", CONVERSATION],
+    ]);
+
+    expect(gitHub(first.bin).conversation.map((comment) => [comment.id, comment.user.login])).toEqual([
+      [77, "another-account"],
+      [9003, "the-user"],
+    ]);
+
+    expect(gitHub(first.bin).conversation[0]).toEqual(theirs);
+
+    const before = gitHubWrites(first.bin).length;
+    const second = await run(dir, ["review", "--mr", "12"], { bin: first.bin });
+
+    expect(second.code).toBe(ExitCode.OK);
+    expect(second.out).toContain("comments written: 0 line comments, summary comment github:issue_comment/9003");
+
+    expect(
+      gitHubWrites(first.bin)
+        .slice(before)
+        .map((call) => call.args.slice(2, 3).concat(call.args.at(-3) ?? "")),
+    ).toEqual([
+      ["PATCH", "repos/Acme/Shop/issues/comments/77"],
+      ["PATCH", "repos/Acme/Shop/issues/comments/9003"],
+    ]);
+
+    expect(gitHub(first.bin).conversation.map((comment) => comment.id)).toEqual([77, 9003]);
+    expect(gitHub(first.bin).conversation[0]).toEqual(theirs);
+    expect(gitHub(first.bin).conversation[1]?.body).toContain("Findings that already had a line comment: 1.");
   });
 
   test("a pending review of the user stops the line comments with what to do, and the review ends with 1", async () => {

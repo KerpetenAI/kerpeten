@@ -445,6 +445,50 @@ describe("comment planner: the plan after the comments were written", () => {
     expect(after.summary.omitted).toBe(0);
   });
 
+  test("when every line comment fails, the summary counts the findings and does not say that nothing was found", () => {
+    for (const language of ["en", "tr"]) {
+      const plan = planner.plan(planInput([first, second], { language }));
+
+      const after = planner.afterLineComments({
+        plan,
+        results: [{ kind: "failed" }, { kind: "failed" }],
+        headSha: HEAD,
+        language,
+      });
+
+      expect(actions(after.findings)).toEqual(["First: stored", "Second: stored"]);
+      expect(after.counts).toEqual({ inline: 0, summary: 0, duplicate: 0, stored: 2 });
+      expect(after.summary.body).not.toContain("nothing to report");
+      expect(after.summary.body).not.toContain("bir şey bulmadı");
+
+      expect(after.summary.body).toContain(
+        language === "en"
+          ? "Line comments in this run: 0.\n\nFindings whose comment may be missing here, because writing it failed: 2. The output of the review run lists them.\n\n<!--"
+          : "Bu çalıştırmadaki satır yorumları: 0.\n\nYazılması başarısız olduğu için yorumu burada eksik olabilecek bulgular: 2. İnceleme çalıştırmasının çıktısında listelenir.\n\n<!--",
+      );
+    }
+  });
+
+  test("a failed line comment is counted in the summary beside the ones that are written and refused, and a refused one is not", () => {
+    const after = planner.afterLineComments({
+      plan: before,
+      results: [{ kind: "written", ref: REF }, { kind: "refused" }, { kind: "failed" }],
+      ...basis,
+    });
+
+    expect(after.summary.body).toContain(
+      "Line comments in this run: 1.\n\nFindings whose comment may be missing here, because writing it failed: 1. The output of the review run lists them.\n\n### Second",
+    );
+
+    const refused = planner.afterLineComments({
+      plan: before,
+      results: [{ kind: "written", ref: REF }, { kind: "refused" }, { kind: "refused" }],
+      ...basis,
+    });
+
+    expect(refused.summary.body).not.toContain("may be missing");
+  });
+
   test("when every line comment is written the actions and the summary text stay, and each finding has its own ref", () => {
     const refs = ["github:review_comment/1", "github:review_comment/2", "github:review_comment/3"];
 
@@ -554,6 +598,55 @@ describe("comment planner: the plan after the comments were written", () => {
 
     expect(after.summary.ref).toBeUndefined();
     expect(after.counts).toEqual({ inline: 1, summary: 0, duplicate: 0, stored: 5 });
+  });
+
+  test("a finding the summary text leaves out for its length gets no ref and is stored; the ones it shows carry the ref", () => {
+    const long = "x".repeat(9_000);
+    const titles = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight"];
+
+    const many = titles.map((title, index) =>
+      finding({
+        title,
+        body: `${title} ${long}`,
+        start_line: index + 1,
+        end_line: index + 1,
+        score: 49 - index,
+        action: "summary",
+      }),
+    );
+
+    const plan = planner.afterLineComments({
+      plan: planner.plan(planInput([...many].reverse())),
+      results: [],
+      ...basis,
+    });
+
+    const shown = titles.filter((title) => plan.summary.body.includes(`### ${title}\n`));
+    const left = titles.slice(shown.length);
+
+    expect(plan.summary.omitted).toBeGreaterThan(0);
+    expect(shown.length).toBe(titles.length - plan.summary.omitted);
+    expect(shown).toEqual(titles.slice(0, shown.length));
+
+    expect(plan.summary.body).toContain(
+      `Findings not shown here, because the comment would be too long: ${left.length}.`,
+    );
+
+    const after = planner.afterSummary(plan, SUMMARY_REF);
+    const byTitle = new Map(after.findings.map((planned) => [planned.title, planned]));
+
+    for (const title of shown) {
+      expect(byTitle.get(title)).toMatchObject({ action: "summary", comment_ref: SUMMARY_REF });
+    }
+
+    for (const title of left) {
+      expect(byTitle.get(title)?.action).toBe("stored");
+      expect("comment_ref" in (byTitle.get(title) ?? {})).toBe(false);
+    }
+
+    expect(after.counts).toEqual({ inline: 0, summary: shown.length, duplicate: 0, stored: left.length });
+    expect(after.summary).toEqual({ ...plan.summary, ref: SUMMARY_REF });
+    expect(after.findings.map((planned) => planned.title)).toEqual([...titles].reverse());
   });
 
   test("a review without findings has a summary to write, and nothing changes in its plan but the ref", () => {

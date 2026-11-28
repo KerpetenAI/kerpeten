@@ -62,17 +62,20 @@ export class CommentTexts {
   }
 
   /**
-   * The summary comment: the heading, the commit and the count of line comments, the note of a partial review, the
-   * findings of `listed` in their order and the marker. With nothing listed, nothing on a line and nothing already
-   * written it says that the review found nothing to report.
+   * The summary comment: the heading, the commit and the count of line comments, the count of findings whose comment
+   * failed to be written, the note of a partial review, the findings of `listed` in their order and the marker. With
+   * nothing listed, nothing on a line, nothing already written and no failed write it says that the review found
+   * nothing to report; it never says so while a finding is left without its comment.
    */
   public summary(listed: readonly RankedFinding[], facts: SummaryFacts): SummaryComment {
     const { words } = this;
-    const quiet = listed.length === 0 && facts.lineComments === 0 && facts.alreadyWritten === 0;
+    const unwritten = facts.unwritten ?? 0;
+    const quiet = listed.length === 0 && facts.lineComments === 0 && facts.alreadyWritten === 0 && unwritten === 0;
 
     const intro = [
       words.heading,
       words.reviewed(this.headSha, facts.lineComments, facts.alreadyWritten),
+      ...(unwritten > 0 ? [words.unwritten(unwritten)] : []),
       ...(facts.partialReason === undefined ? [] : [words.partial(CommentTexts.reason(facts.partialReason))]),
       ...(quiet ? [words.nothing] : []),
     ];

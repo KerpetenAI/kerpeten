@@ -165,10 +165,19 @@ export interface LineCommentWrite {
 }
 
 /**
- * What became of the summary comment: written, with the `ref` that names it and whether a comment that was there was
- * updated, or failed with a message that says why and what to do.
+ * What became of the summary comment:
+ *
+ * - `written`: it is on the merge request; `ref` names it and `updated` says whether a comment that was there got
+ *   the new text.
+ * - `refused`: the comment that was to be updated cannot be: the platform does not let this account change it, or
+ *   it is gone. Nothing was written, and another comment may be tried or a new one made. `reason` says what the
+ *   platform answered. A write that makes a new comment is never refused in this sense.
+ * - `failed`: the write failed for another reason.
  */
-export type SummaryWrite = { readonly kind: "written"; readonly ref: string; readonly updated: boolean } | FailedWrite;
+export type SummaryWrite =
+  | { readonly kind: "written"; readonly ref: string; readonly updated: boolean }
+  | { readonly kind: "refused"; readonly reason: string }
+  | FailedWrite;
 
 /**
  * What the review writes to the platform a merge request lives on. Neither method throws for a write the platform
@@ -186,9 +195,9 @@ export interface PlatformWriter {
   ): Promise<LineCommentWrite>;
 
   /**
-   * Writes the one summary comment of merge request `number`. With `existing`, the ref of the summary comment that
-   * is there, that comment gets the new text; without it a new comment is made. A ref that names no comment a
-   * summary can be is refused with an error.
+   * Writes the one summary comment of merge request `number`. With `existing`, the ref of a summary comment that is
+   * there, that comment gets the new text, or the write is `refused` when this account cannot change it; without
+   * `existing` a new comment is made. A ref that names no comment a summary can be throws an error.
    */
   writeSummary(number: number, body: string, existing?: string): Promise<SummaryWrite>;
 }

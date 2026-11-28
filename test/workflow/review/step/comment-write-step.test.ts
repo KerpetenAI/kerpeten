@@ -96,8 +96,9 @@ async function write(
   lines: Readonly<Record<number, LineCommentOutcome>> = {},
   summary?: SummaryWrite,
   problems: readonly string[] = [],
+  foreign: readonly string[] = [],
 ) {
-  const writer = new RecordingWriter(lines, summary, problems);
+  const writer = new RecordingWriter(lines, summary, problems, foreign);
 
   const { commentWrite } = await runStep(await reviewComponent(CommentWriteStep), state, {
     give: (run) => run.give(PlatformChoice, new GivenPlatformChoice(writer)),
@@ -256,26 +257,31 @@ describe("comment write flow step", () => {
     });
   });
 
-  test("the summary comment of Kerpeten that is on the merge request is updated: the first comment of the conversation with the summary's marker", async () => {
+  /** Comments that are on the pull request of `head`: copies of the summary's marker, and two summary comments, 77 and 78. */
+  function twoSummaries(head: string): WrittenComment[] {
     const other = "c".repeat(40);
 
-    const { state, lines } = await planned([onLine2], (head) => [
+    return [
       { kind: "line", mark: CommentMarker.finding(other, "src/a.ts", 2, 2).mark, ref: "github:review_comment/5" },
       { kind: "general", mark: CommentMarker.summary(head).mark, ref: "github:review/6" },
       { kind: "line", mark: CommentMarker.summary(head).mark, ref: "github:review_comment/7" },
       { kind: "general", mark: CommentMarker.summary(other).mark, ref: "github:issue_comment/77" },
       { kind: "general", mark: CommentMarker.summary(head).mark, ref: "github:issue_comment/78" },
-    ]);
+    ];
+  }
 
+  test("the summary comment of Kerpeten that is on the merge request is updated: the first comment of the conversation with the summary's marker", async () => {
+    const { state, lines } = await planned([onLine2], twoSummaries);
     const { commentWrite, calls } = await write(state);
 
-    expect(calls[1]).toMatchObject({ kind: "summary", existing: "github:issue_comment/77" });
+    expect(calls.slice(1)).toMatchObject([{ kind: "summary", existing: "github:issue_comment/77" }]);
     expect(commentWrite?.plan.summary.ref).toBe("github:issue_comment/77");
+    expect(commentWrite?.failures).toEqual([]);
 
     expect(lines).toContainEqual({
       level: "warn",
-      message: "more than one summary comment is on the merge request, the first is updated",
-      fields: { updated: "github:issue_comment/77", left: "github:issue_comment/78" },
+      message: "more than one summary comment is on the merge request",
+      fields: { updated: "github:issue_comment/77", all: "github:issue_comment/77,github:issue_comment/78" },
     });
 
     expect(lines).toContainEqual({
@@ -283,6 +289,64 @@ describe("comment write flow step", () => {
       message: "comments written",
       fields: { line_comments: 1, refused: 0, failed: 0, summary: "updated", summary_ref: "github:issue_comment/77" },
     });
+  });
+
+  test("a summary comment this account cannot change is left, with a warning, and the next one is updated", async () => {
+    const { state, lines } = await planned([onLine2, listed], twoSummaries);
+    const { commentWrite, calls } = await write(state, {}, undefined, [], ["github:issue_comment/77"]);
+
+    expect(calls.slice(1)).toMatchObject([
+      { kind: "summary", existing: "github:issue_comment/77" },
+      { kind: "summary", existing: "github:issue_comment/78" },
+    ]);
+
+    expect(commentWrite?.plan.summary.ref).toBe("github:issue_comment/78");
+    expect(commentWrite?.failures).toEqual([]);
+
+    expect(
+      commentWrite?.plan.findings.map((finding) => ("comment_ref" in finding ? finding.comment_ref : undefined)),
+    ).toEqual(["github:review_comment/2", "github:issue_comment/78"]);
+
+    expect(lines).toContainEqual({
+      level: "warn",
+      message: "summary comment cannot be updated by this account, another one is written",
+      fields: {
+        comment: "github:issue_comment/77",
+        reason: "not written: the platform does not let this account change github:issue_comment/77",
+      },
+    });
+  });
+
+  test("when this account can change none of the summary comments, a new one is made, and the summary is written", async () => {
+    const { state, lines } = await planned([onLine2], twoSummaries);
+    const foreign = ["github:issue_comment/77", "github:issue_comment/78"];
+    const { commentWrite, calls } = await write(state, {}, undefined, [], foreign);
+
+    expect(calls.slice(1)).toMatchObject([
+      { kind: "summary", existing: "github:issue_comment/77" },
+      { kind: "summary", existing: "github:issue_comment/78" },
+      { kind: "summary", existing: undefined },
+    ]);
+
+    expect(commentWrite?.plan.summary.ref).toBe(SUMMARY_REF);
+    expect(commentWrite?.failures).toEqual([]);
+    expect(lines.filter((line) => line.message.startsWith("summary comment cannot be updated")).length).toBe(2);
+
+    expect(lines).toContainEqual({
+      level: "info",
+      message: "comments written",
+      fields: { line_comments: 1, refused: 0, failed: 0, summary: "created", summary_ref: SUMMARY_REF },
+    });
+  });
+
+  test("an update that fails for another reason is not tried on another comment and makes no new one: the summary failed", async () => {
+    const { state } = await planned([onLine2, listed], twoSummaries);
+    const failed = { kind: "failed", message: "it is not known whether GitHub wrote it: gh api failed" } as const;
+    const { commentWrite, calls } = await write(state, {}, failed);
+
+    expect(calls.slice(1)).toMatchObject([{ kind: "summary", existing: "github:issue_comment/77" }]);
+    expect(commentWrite?.failures).toEqual(["summary comment: it is not known whether GitHub wrote it: gh api failed"]);
+    expect(commentWrite?.plan.findings.map((finding) => finding.action)).toEqual(["inline", "stored"]);
   });
 
   test("a review without findings writes no line comment and still writes the summary", async () => {
