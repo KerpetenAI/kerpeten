@@ -13,80 +13,6 @@ The review is of the change between a base and `HEAD`. Without `--base`, the bas
 
 The review is of `HEAD`, but the tools read the files on disk. So `kerpeten review` stops with an error when a tracked file has uncommitted changes, and names the files; commit or stash them first. Untracked files do not matter, because the tools only see files tracked at `HEAD`.
 
-## Reviewing a pull request or merge request
-
-```sh
-gh pr checkout 12      # on GitHub
-glab mr checkout 12    # on GitLab
-kerpeten review --dry-run --mr 12
-```
-
-`--mr <n>` reviews pull request `n` of the GitHub repository in the current folder, or merge request `n` of the GitLab project there. On GitLab, `n` is the number inside the project, the one in `!12`. Kerpeten reads it with the platform's own command line tool, `gh` for GitHub and `glab` for GitLab, so it uses the sign-in of that tool and holds no token of its own. It only reads. The reviewer gets the title and the description instead of the branch name and the commit messages; when the description is empty, it gets the commit messages. The title and the description are data for the models, like the diff.
-
-It needs three things:
-
-- The tool of the platform, installed and signed in, in a clone whose remote is on that platform: `gh` with `gh auth login`, or `glab` with `glab auth login`. For a GitLab host of your own, sign in to it with `glab auth login --hostname <host>`.
-- The working copy at the last commit of the pull request or merge request. `gh pr checkout <n>` or `glab mr checkout <n>` gets it. The review is of that commit, so `HEAD` at another commit stops the review.
-- The base commit, in the local repository. On GitHub it is the last commit of the branch the pull request goes into, on GitLab the commit where the branch of the merge request left that branch. `git fetch origin` gets it.
-
-The change is the one between that base commit and `HEAD`, from where the branch left the base. So `--mr` and `--base` do not go together.
-
-The order is fixed, so that a review that cannot run costs nothing: first the platform is chosen, then its tool reads the pull request or merge request, then `HEAD` is checked against its last commit, then the uncommitted changes are checked, then the diff is made. Only after all of that is a model called.
-
-What it does not do yet: it posts nothing. No comment is written, and the comments that are already there are not read for the review. `--dry-run` is still needed.
-
-### Which platform
-
-The `origin` remote tells the platform: a remote on `github.com` is GitHub, one on `gitlab.com` is GitLab. For any other host, such as a GitLab of your own or GitHub Enterprise, and for a repository without an `origin` remote, set [`platform`](configuration.md#platform) in `.kerpeten.yml`:
-
-```yaml
-platform: gitlab
-```
-
-Kerpeten does not guess the platform from the host name and does not try one tool after the other. Without the key and without a host it knows, `--mr` stops with an error that asks for the key.
-
-In a clone with several remotes, the tool decides which repository is meant, not Kerpeten. `glab` uses the remote it was told is the base, which it asks for once in a terminal; when it was told none, it takes the remote named `upstream`, then `gitlab`, then `origin`. The first line of the output shows which pull request or merge request was read.
-
-### The merge request in the output
-
-The text output starts with one line for the pull request or merge request, and `--json` has a `merge_request` object:
-
-```json
-{
-  "merge_request": {
-    "tenant": "default",
-    "platform": { "kind": "github", "host": "github.com" },
-    "project": { "id": "1296269" },
-    "mr": 12,
-    "title": "Add a division helper",
-    "state": "open",
-    "head_sha": "69435fefd9f2c0a4b4f4f6d0e3c1a2b3c4d5e6f7",
-    "base_sha": "524f2b14fb27a1b2c3d4e5f60718293a4b5c6d7e"
-  }
-}
-```
-
-`platform.kind` is `github` or `gitlab`. `project.id` is the platform's id of the repository: on GitLab, of the project the merge request goes into. `state` is `open`, `closed` or `merged`. `tenant` is the value of the environment variable `KERPETEN_TENANT`, and `default` when it is not set or empty.
-
-### Errors
-
-Each of these stops the review with exit code 2 before any model is called, and says what to do:
-
-| Error | What to do |
-| --- | --- |
-| The platform cannot be told from the `origin` remote | Set `platform: github` or `platform: gitlab` in `.kerpeten.yml` |
-| `gh` or `glab` is not found | Install the GitHub CLI from <https://cli.github.com>, or the GitLab CLI from <https://gitlab.com/gitlab-org/cli> |
-| `gh` is not signed in, or GitLab does not accept the sign-in of `glab` | Run `gh auth login` or `glab auth login`; when `GITLAB_TOKEN` is set, `glab` uses that token, so correct it there |
-| The pull request or merge request was not found | Check the number, and that the sign-in can read the repository. GitLab gives this answer too for a private project that `glab` is not signed in for |
-| The tool finds no repository of its platform in the folder | Run inside a clone whose remote is on that platform; for a GitLab host of your own, run `glab auth login --hostname <host>` first |
-| GitLab is merging the merge request right now | Run again when the merge is done |
-| The merge request has no diff yet | Push a commit to its branch, or wait until GitLab has made the diff |
-| `HEAD` is not the last commit of the pull request or merge request | Run `gh pr checkout <n>` or `glab mr checkout <n>`, or push your commits |
-| The base commit is not in the repository | Run `git fetch origin` |
-| `--mr` is not a whole number of 1 or more, or `--base` is given too | Fix the command line |
-
-Any other failure of `gh` or `glab` stops the review the same way, with the error text of the tool.
-
 ## Extra context
 
 `--extra-context <path>` gives the reviewer and the judge text from outside the repository, such as a ticket, a design note or a team rule; `--extra-context -` reads it from stdin. The text goes into the message of the reviewer and of every judge call as data, in a block of its own. It must be UTF-8 text of at most 20,000 characters: a source that cannot be read, is not text, is empty or is longer stops the review with an error before any model is called, and nothing is cut. There is no `.kerpeten.yml` setting for it, so a reviewed change cannot pull a file into the review.
@@ -109,4 +35,4 @@ Each finding shows its place, category, title, body, `fix` and evidence, then th
 
 The `fix` is the reviewer's note on how to fix the finding, in one to three sentences, or what has to be checked or decided when the fix is not clear. The judge says in its `rationale` when the note is wrong; the note does not change the verdict or the score.
 
-The usage is reported per role: a `reviewer` entry, and a `judge` entry only when the judge ran, which is the sum of all judge calls. When the change is empty, no model runs and the usage list is empty. `--json` prints `{ "findings": [...], "usage": [...] }` with the same fields, and with `--mr` a [`merge_request`](#the-merge-request-in-the-output) object before them. A limit that ends the reviewer early and a limit that ends the judge stage are reported on stderr as separate lines, each with its reason, also with `--json`.
+The usage is reported per role: a `reviewer` entry, and a `judge` entry only when the judge ran, which is the sum of all judge calls. When the change is empty, no model runs and the usage list is empty. `--json` prints `{ "findings": [...], "usage": [...] }` with the same fields. A limit that ends the reviewer early and a limit that ends the judge stage are reported on stderr as separate lines, each with its reason, also with `--json`.
