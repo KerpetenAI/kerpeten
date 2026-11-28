@@ -2,7 +2,7 @@ name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [master]
 
 permissions:
   contents: read
@@ -12,23 +12,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
   version:
+    needs: check
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - name: The tag is the package version
-        env:
-          TAG: ${{ github.ref_name }}
+      - name: Look for changesets
+        id: changesets
         run: |
-          version="v$(jq -r .version package.json)"
-          if [ "$version" != "$TAG" ]; then
-            echo "the tag is $TAG but package.json says $version" >&2
-            exit 1
+          if find .changeset -maxdepth 1 -name '*.md' ! -name README.md | grep -q .; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "no changeset is waiting, so there is no version to prepare"
           fi
-
-  check:
-    needs: version
-    uses: ./.github/workflows/ci.yml
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        if: steps.changesets.outputs.found == 'true'
+        with:
+          bun-version: "1.4.5"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        if: steps.changesets.outputs.found == 'true'
+        with:
+          node-version: "24"
+      - if: steps.changesets.outputs.found == 'true'
+        run: bun install --frozen-lockfile
+      - name: Open or update the version pull request
+        if: steps.changesets.outputs.found == 'true'
+        uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51
+        with:
+          script: bun run version-packages
+          commit-message: "chore: version packages"
+          pr-title: "chore: version packages"
 
   publish:
     needs: check
@@ -63,3 +83,32 @@ jobs:
               npm publish "$tarball" --access public
             fi
           done
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Create the GitHub release of a version that has none
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(jq -r .version package.json)"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "the release v$version is already there"
+            exit 0
+          fi
+          if [ ! -f CHANGELOG.md ]; then
+            echo "there is no CHANGELOG.md yet, so v$version gets no release"
+            exit 0
+          fi
+          notes="$RUNNER_TEMP/notes.md"
+          awk -v heading="## $version" '$0 == heading { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md > "$notes"
+          if ! grep -q '[^[:space:]]' "$notes"; then
+            echo "CHANGELOG.md has no section for $version, so v$version gets no release"
+            exit 0
+          fi
+          gh release create "v$version" --target "$GITHUB_SHA" --title "v$version" --notes-file "$notes"

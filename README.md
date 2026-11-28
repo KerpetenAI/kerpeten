@@ -5,7 +5,7 @@
 <p align="center"><b>AI code review in your terminal, where a second model checks every finding.</b></p>
 <p align="center">
   <a href="https://www.npmjs.com/package/kerpeten"><img alt="npm" src="https://img.shields.io/npm/v/kerpeten?style=flat-square"></a>
-  <a href="https://github.com/KerpetenSH/kerpeten/actions/workflows/ci.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/KerpetenSH/kerpeten/ci.yml?branch=master&style=flat-square&label=ci"></a>
+  <a href="https://github.com/KerpetenSH/kerpeten/actions/workflows/release.yml"><img alt="ci" src="https://img.shields.io/github/actions/workflow/status/KerpetenSH/kerpeten/release.yml?branch=master&style=flat-square&label=ci"></a>
   <a href="https://github.com/KerpetenSH/kerpeten/blob/master/LICENSE"><img alt="license" src="https://img.shields.io/npm/l/kerpeten?style=flat-square"></a>
 </p>
 
