@@ -85,7 +85,7 @@ The review covers the commits of your branch that are not on the default branch 
 | `openrouter` | `OPENROUTER_API_KEY` |
 | `chatgpt` | A sign-in with `kerpeten auth login`; the requests count against your ChatGPT plan |
 
-Another endpoint that speaks the API of one of these providers works too, with `base_url` and `api_key_env`. [Configuration](https://github.com/KerpetenSH/kerpeten/blob/master/docs/configuration.md) tells how.
+Another endpoint that speaks the API of one of these providers works too, with `base_url` and `api_key_env`. [Configuration](https://kerpeten.sh/docs/configuration/) tells how.
 
 ## How it works
 
@@ -111,10 +111,12 @@ The npm package brings a ready binary for Linux (x64 and arm64, glibc) and for m
 
 ## Documentation
 
-- [Configuration](https://github.com/KerpetenSH/kerpeten/blob/master/docs/configuration.md): models, keys, other endpoints, the comment language, limits and thresholds
-- [Reviewing](https://github.com/KerpetenSH/kerpeten/blob/master/docs/reviewing.md): what is reviewed, extra context, rule files, the judge and the output
-- [ChatGPT plan](https://github.com/KerpetenSH/kerpeten/blob/master/docs/chatgpt-plan.md): the sign-in and how plan usage behaves
-- [Development](https://github.com/KerpetenSH/kerpeten/blob/master/docs/development.md): running from source, the checks and the builds
+The docs are at [kerpeten.sh/docs](https://kerpeten.sh/docs/); they live in the [website repository](https://github.com/KerpetenSH/website).
+
+- [Configuration](https://kerpeten.sh/docs/configuration/): models, keys, other endpoints, the comment language, limits and thresholds
+- [Reviewing](https://kerpeten.sh/docs/reviewing/): what is reviewed, extra context, rule files, the judge and the output
+- [ChatGPT plan](https://kerpeten.sh/docs/chatgpt-plan/): the sign-in and how plan usage behaves
+- [Development](https://kerpeten.sh/docs/development/): running from source, the checks and the builds
 - [Releasing](https://github.com/KerpetenSH/kerpeten/blob/master/RELEASING.md): how a version gets to npm
 
 ## License
