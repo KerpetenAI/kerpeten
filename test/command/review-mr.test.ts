@@ -9,6 +9,8 @@ import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
 import {
   discussion,
   fakeCli,
+  GITHUB_ORIGIN,
+  GITLAB_ORIGIN,
   ghCalls,
   ghPaths,
   glabCalls,
@@ -33,10 +35,6 @@ const GH_TOKEN = "ghp_REVIEW_MR_TEST_TOKEN_5d1c";
 
 const GITLAB_TOKEN = "gitlab-token-of-the-review-mr-test-77e2";
 
-const GITHUB_ORIGIN = "https://github.com/Acme/Shop.git";
-
-const GITLAB_ORIGIN = "git@gitlab.com:acme/shop.git";
-
 const SELF_HOSTED_ORIGIN = "https://git.example.com/acme/shop.git";
 
 const KIMI_URL = "https://api.kimi.com/coding/v1";
@@ -52,13 +50,30 @@ const COMMENTS = ghPaths(12);
 
 const PULL = COMMENTS.pull;
 
+const LOWER_CASE_PULL = ghPaths(12, "acme/shop").pull;
+
 const MERGE_REQUEST = glabPaths(12).mergeRequest;
 
 const DISCUSSIONS = glabPaths(12).discussions;
 
-const GLAB_READ = ["api", "--method", "GET", "--output", "ndjson", MERGE_REQUEST];
+const GH_READ = ["api", "--method", "GET", "--hostname", "github.com"];
 
-const GLAB_DISCUSSIONS = ["api", "--method", "GET", "--output", "ndjson", "--paginate", DISCUSSIONS];
+const GLAB_READ = ["api", "--method", "GET", "--output", "ndjson", "--hostname", "gitlab.com", MERGE_REQUEST];
+
+const NEEDS_PROJECT =
+  "a review of a pull request or merge request reads it from the project of the origin remote, so the remote must be the address of a project on GitHub or GitLab";
+
+const GLAB_DISCUSSIONS = [
+  "api",
+  "--method",
+  "GET",
+  "--output",
+  "ndjson",
+  "--hostname",
+  "gitlab.com",
+  "--paginate",
+  DISCUSSIONS,
+];
 
 const finding = {
   file: "src/a.ts",
@@ -211,10 +226,10 @@ describe("kerpeten review --dry-run --mr", () => {
     expect(result.out).toContain("- src/a.ts:2-2 [bug] Division by zero");
 
     expect(ghCalls(result.bin)).toEqual([
-      ["api", "--method", "GET", PULL],
-      ["api", "--method", "GET", "--paginate", "--slurp", COMMENTS.comments],
-      ["api", "--method", "GET", "--paginate", "--slurp", COMMENTS.reviews],
-      ["api", "--method", "GET", "--paginate", "--slurp", COMMENTS.conversation],
+      [...GH_READ, PULL],
+      [...GH_READ, "--paginate", "--slurp", COMMENTS.comments],
+      [...GH_READ, "--paginate", "--slurp", COMMENTS.reviews],
+      [...GH_READ, "--paginate", "--slurp", COMMENTS.conversation],
     ]);
 
     expect(glabCalls(result.bin)).toEqual([]);
@@ -224,6 +239,9 @@ describe("kerpeten review --dry-run --mr", () => {
     expect(prompt).toMatch(/BEGIN DATA title \S+ ===\\nAdd a division helper\\n=== END DATA title/);
     expect(prompt).toMatch(/BEGIN DATA description \S+ ===\\nNeeded for the cart\.\\n=== END DATA description/);
     expect(prompt).not.toContain("The commit message says why.");
+
+    expect(result.err).toContain('"review started" command=review mode=merge-request provider=anthropic');
+    expect(result.err).not.toContain("mode=local-branch");
 
     expect(result.err).toContain(
       `"merge request read" command=review tenant=default platform=github host=github.com project=4242 mr=12 state=open head=${head} base=${base}`,
@@ -263,6 +281,7 @@ describe("kerpeten review --dry-run --mr", () => {
 
     expect(local.code).toBe(ExitCode.OK);
     expect(Object.keys(JSON.parse(local.out))).toEqual(["findings", "usage"]);
+    expect(local.err).toContain('"review started" command=review mode=local-branch provider=anthropic');
     expect(ghCalls(local.bin)).toEqual([]);
   });
 
@@ -373,7 +392,7 @@ describe("kerpeten review --dry-run --mr", () => {
     expect(result.code).toBe(ExitCode.USAGE);
 
     expect(result.err).toContain(
-      `kerpeten review: the base commit ${SHA_C} of pull request 12 is not in this repository; fetch the branch the pull request goes into, for example with \`git fetch origin\`, and run again`,
+      `kerpeten review: the base commit ${SHA_C} of pull request 12 is not in this repository; fetch the branch the pull request goes into with \`git fetch origin\`, and run again`,
     );
 
     expect(result.calls.length).toBe(0);
@@ -394,18 +413,18 @@ describe("kerpeten review --dry-run --mr", () => {
     const cases: [GhAnswer, string, ExitCode][] = [
       [
         { exitCode: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" },
-        "kerpeten review: --mr 12: gh is not signed in to GitHub: run `gh auth login` and run again",
+        "kerpeten review: --mr 12: gh is not signed in to github.com: run `gh auth login --hostname github.com` and run again",
         ExitCode.USAGE,
       ],
       [
         { exitCode: 1, stderr: "gh: Not Found (HTTP 404)\n", stdout: '{"message":"Not Found","status":"404"}' },
-        "kerpeten review: --mr 12: pull request 12 was not found in the GitHub repository of this folder: check the number, and that the sign-in of gh can read the repository",
+        "kerpeten review: --mr 12: pull request 12 was not found in github.com/Acme/Shop, the repository of the origin remote: check the number, and that gh is signed in to github.com with an account that can read the repository; a pull request of another repository, such as the one a fork was made from, is not read",
         ExitCode.USAGE,
       ],
       [
-        { exitCode: 1, stderr: "unable to expand placeholder in path: no git remotes found\n" },
-        "kerpeten review: --mr 12: gh finds no GitHub repository in this folder: run inside a clone whose remote is on GitHub",
-        ExitCode.USAGE,
+        { stdout: pullJson({ fullName: "Other/Shop" }) },
+        'kerpeten review: --mr 12: gh answered with a pull request of "Other/Shop", not of Acme/Shop, the repository of the origin remote; when the repository was renamed or moved, point the origin remote at its new address and run again',
+        ExitCode.FAILED,
       ],
       [
         { exitCode: 1, stderr: "gh: Server Error (HTTP 502)\n" },
@@ -522,6 +541,9 @@ function lineComment(id: number, login: string, body: string): Record<string, un
     user: { login },
     body,
     path: "src/a.ts",
+    subject_type: "line",
+    side: "RIGHT",
+    start_side: null,
     line: 2,
     start_line: null,
     original_line: 2,
@@ -723,7 +745,7 @@ describe("kerpeten review --dry-run --mr: the comment plan", () => {
     expect(result.code).toBe(ExitCode.FAILED);
 
     expect(result.err).toContain(
-      "kerpeten review: --mr 12: the comments of the pull request could not all be read, so the review cannot tell which findings are already written: repos/{owner}/{repo}/pulls/12/reviews: gh api failed (exit 1): gh: rate limit; repos/{owner}/{repo}/issues/12/comments: the answer of gh is not the list of pages it should be",
+      "kerpeten review: --mr 12: the comments of the pull request could not all be read, so the review cannot tell which findings are already written: repos/Acme/Shop/pulls/12/reviews: gh api failed (exit 1): gh: rate limit; repos/Acme/Shop/issues/12/comments: the answer of gh is not the list of pages it should be",
     );
 
     expect(result.out).toBe("");
@@ -742,7 +764,7 @@ describe("kerpeten review --dry-run --mr: the comment plan", () => {
     expect(result.code).toBe(ExitCode.USAGE);
 
     expect(result.err).toContain(
-      "kerpeten review: --mr 12: gh is not signed in to GitHub: run `gh auth login` and run again",
+      "kerpeten review: --mr 12: gh is not signed in to github.com: run `gh auth login --hostname github.com` and run again",
     );
 
     expect(result.out).toBe("");
@@ -759,7 +781,7 @@ describe("kerpeten review --dry-run --mr: the comment plan", () => {
 
     expect(result.code).toBe(ExitCode.USAGE);
     expect(result.err).toContain("HEAD is at");
-    expect(ghCalls(result.bin)).toEqual([["api", "--method", "GET", PULL]]);
+    expect(ghCalls(result.bin)).toEqual([[...GH_READ, PULL]]);
   });
 
   test("with limits.max_inline_comments 0 the finding goes to the summary, whatever its score", async () => {
@@ -996,7 +1018,7 @@ describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
     expect(result.code).toBe(ExitCode.USAGE);
 
     expect(result.err).toContain(
-      `kerpeten review: the base commit ${SHA_C} of merge request 12 is not in this repository; fetch the branch the merge request goes into, for example with \`git fetch origin\`, and run again`,
+      `kerpeten review: the base commit ${SHA_C} of merge request 12 is not in this repository; fetch the branch the merge request goes into with \`git fetch origin\`, and run again`,
     );
 
     expect(result.calls.length).toBe(0);
@@ -1018,18 +1040,18 @@ describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
     const cases: [CliAnswer, string, ExitCode][] = [
       [
         { exitCode: 1, stderr: "glab: 401 Unauthorized (HTTP 401)\n", stdout: '{"message":"401 Unauthorized"}' },
-        "kerpeten review: --mr 12: GitLab did not accept the sign-in of glab (HTTP 401): run `glab auth login`, or correct the token in GITLAB_TOKEN when that variable is set, and run again",
+        "kerpeten review: --mr 12: GitLab at gitlab.com did not accept the sign-in of glab (HTTP 401): run `glab auth login --hostname gitlab.com`, or correct the token in GITLAB_TOKEN when that variable is set, and run again",
         ExitCode.USAGE,
       ],
       [
         { exitCode: 1, stderr: "glab: 404 Not found (HTTP 404)\n", stdout: '{"message":"404 Not found"}' },
-        "kerpeten review: --mr 12: merge request 12 was not found in the GitLab project of this folder: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in (`glab auth login`) with an account that can read the project",
+        "kerpeten review: --mr 12: merge request 12 was not found in gitlab.com/acme/shop, the project of the origin remote: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in to gitlab.com (`glab auth login --hostname gitlab.com`) with an account that can read the project; a merge request of another project, such as the one a fork was made from, is not read",
         ExitCode.USAGE,
       ],
       [
-        { exitCode: 1, stderr: "\n   ERROR  \n\n  unable to expand placeholder in path: no git remotes found.\n" },
-        "kerpeten review: --mr 12: glab finds no GitLab project in this folder: run inside a clone whose remote is on GitLab; for a GitLab host of your own, sign glab in to it first with `glab auth login --hostname <host>`",
-        ExitCode.USAGE,
+        { stdout: mergeRequestJson({ webUrl: "https://gitlab.com/other/shop/-/merge_requests/12" }) },
+        'kerpeten review: --mr 12: glab answered with a merge request of "other/shop", not of acme/shop, the project of the origin remote; when the project was renamed or moved, point the origin remote at its new address and run again',
+        ExitCode.FAILED,
       ],
       [
         { exitCode: 1, stderr: "glab: 502 Bad Gateway (HTTP 502)\n" },
@@ -1148,10 +1170,16 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
     expect(JSON.parse(onGitLab.out).merge_request.platform).toEqual({ kind: "gitlab", host: "git.example.com" });
     expect(ghCalls(onGitLab.bin)).toEqual([]);
 
+    expect(glabCalls(onGitLab.bin)).toEqual([
+      ["api", "--method", "GET", "--output", "ndjson", "--hostname", "git.example.com", MERGE_REQUEST],
+      ["api", "--method", "GET", "--output", "ndjson", "--hostname", "git.example.com", "--paginate", DISCUSSIONS],
+    ]);
+
     const github = repo(SELF_HOSTED_ORIGIN, "platform: github\n");
 
     const onGitHub = await run(github.dir, ["review", "--dry-run", "--mr", "12", "--json"], {
-      [PULL]: {
+      ...noComments(12, "acme/shop"),
+      [LOWER_CASE_PULL]: {
         stdout: pullJson({
           headSha: github.head,
           baseSha: github.base,
@@ -1163,22 +1191,151 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
     expect(onGitHub.code).toBe(ExitCode.OK);
     expect(JSON.parse(onGitHub.out).merge_request.platform).toEqual({ kind: "github", host: "git.example.com" });
     expect(glabCalls(onGitHub.bin)).toEqual([]);
+
+    expect(ghCalls(onGitHub.bin).length).toBe(4);
+
+    for (const call of ghCalls(onGitHub.bin)) {
+      expect(call.slice(0, 5)).toEqual(["api", "--method", "GET", "--hostname", "git.example.com"]);
+      expect(call.at(-1)).toStartWith("repos/acme/shop/");
+    }
   });
 
   test("the platform key wins over the host of the origin remote", async () => {
     const { dir, base, head } = repo(GITLAB_ORIGIN, "platform: github\n");
 
     const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
-      [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+      ...noComments(12, "acme/shop"),
+      [LOWER_CASE_PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
     });
 
     expect(result.code).toBe(ExitCode.OK);
     expect(result.out).toContain("merge request: #12 Add div (open), github github.com, project 4242, tenant default");
     expect(ghCalls(result.bin).length).toBe(4);
+    expect(ghCalls(result.bin)[0]).toEqual(["api", "--method", "GET", "--hostname", "gitlab.com", LOWER_CASE_PULL]);
     expect(glabCalls(result.bin)).toEqual([]);
   });
 
-  test("a host that is neither github.com nor gitlab.com, and a repository without an origin remote, are usage errors that say to set platform, before any tool or model is called", async () => {
+  test("the project of a review is the one of the origin remote, also in a clone with a remote named upstream", async () => {
+    const github = repo();
+
+    sh(github.dir, ["remote", "add", "upstream", "https://github.com/Other/Shop.git"]);
+
+    const onGitHub = await run(github.dir, ["review", "--dry-run", "--mr", "12", "--json"], {
+      [PULL]: { stdout: pullJson({ headSha: github.head, baseSha: github.base }) },
+      [ghPaths(12, "Other/Shop").pull]: {
+        stdout: pullJson({
+          headSha: github.head,
+          baseSha: github.base,
+          title: "Of the other project",
+          fullName: "Other/Shop",
+        }),
+      },
+    });
+
+    expect(onGitHub.code).toBe(ExitCode.OK);
+    expect(JSON.parse(onGitHub.out).merge_request.title).toBe("Add div");
+    expect(ghCalls(onGitHub.bin).length).toBe(4);
+
+    for (const call of ghCalls(onGitHub.bin)) {
+      expect(call.slice(0, 5)).toEqual(GH_READ);
+      expect(call.at(-1)).toStartWith("repos/Acme/Shop/");
+    }
+
+    const gitlab = repo(GITLAB_ORIGIN);
+
+    sh(gitlab.dir, ["remote", "add", "upstream", "git@gitlab.com:other/shop.git"]);
+    sh(gitlab.dir, ["config", "remote.upstream.glab-resolved", "base"]);
+
+    const onGitLab = await run(
+      gitlab.dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      {
+        [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: gitlab.head, baseSha: gitlab.base }) },
+        [glabPaths(12, "other/shop").mergeRequest]: {
+          stdout: mergeRequestJson({
+            sha: gitlab.head,
+            baseSha: gitlab.base,
+            title: "Of the other project",
+            webUrl: "https://gitlab.com/other/shop/-/merge_requests/12",
+          }),
+        },
+      },
+      { cli: "glab" },
+    );
+
+    expect(onGitLab.code).toBe(ExitCode.OK);
+    expect(JSON.parse(onGitLab.out).merge_request.title).toBe("Add div");
+    expect(glabCalls(onGitLab.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
+  });
+
+  test("an origin remote in git's remote helper form is read as the URL it holds", async () => {
+    const { dir, base, head } = repo("https::https://gitlab.com/acme/shop.git");
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) } },
+      { cli: "glab" },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(glabCalls(result.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
+    expect(ghCalls(result.bin)).toEqual([]);
+  });
+
+  test("an origin remote that names no project is a usage error before any tool or model is called, with or without the platform key", async () => {
+    const noOrigin =
+      "kerpeten review: --mr 12: this repository has no origin remote: a review of a pull request or merge request reads it from the project of the origin remote, so add one with `git remote add origin <address of the project>`";
+
+    const cases: [string, string, string][] = [
+      ["no origin", "", noOrigin],
+      ["no origin", "platform: gitlab\n", noOrigin],
+      ["no origin", "platform: github\n", noOrigin],
+      [
+        "/srv/git/shop.git",
+        "platform: gitlab\n",
+        `kerpeten review: --mr 12: the origin remote is a path on this machine: ${NEEDS_PROJECT}`,
+      ],
+      [
+        "ext::ssh -q git@gitlab.com %S acme/shop",
+        "",
+        `kerpeten review: --mr 12: the origin remote uses git's remote helper ext, whose address is no URL with a host: ${NEEDS_PROJECT}`,
+      ],
+      [
+        "https://reader:hunter2@github.com/Acme/Shop?page=hunter2",
+        "",
+        `kerpeten review: --mr 12: the URL of the origin remote has a query or a fragment, which the address of a project does not have: ${NEEDS_PROJECT}`,
+      ],
+      [
+        "git@github.com:Acme/Shop/pulls",
+        "",
+        "kerpeten review: --mr 12: the origin remote names github.com/Acme/Shop/pulls, which is no GitHub repository: a repository is an owner and a name, <owner>/<name>",
+      ],
+      [
+        "git@gitlab.com:shop.git",
+        "",
+        "kerpeten review: --mr 12: the origin remote names gitlab.com/shop, which is no GitLab project: a project is a namespace and a name, <namespace>/<name>",
+      ],
+    ];
+
+    for (const [origin, config, message] of cases) {
+      const { dir } = repo(origin, config);
+      const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {});
+
+      expect({ code: result.code, err: result.err }).toEqual({
+        code: ExitCode.USAGE,
+        err: expect.stringContaining(message),
+      });
+
+      expect(result.err).not.toContain("hunter2");
+      expect(result.out).toBe("");
+      expect(ghCalls(result.bin)).toEqual([]);
+      expect(glabCalls(result.bin)).toEqual([]);
+      expect(result.calls.length).toBe(0);
+    }
+  });
+
+  test("a host that is neither github.com nor gitlab.com is a usage error that says to set platform, before any tool or model is called", async () => {
     const cases: [string, string][] = [
       [
         SELF_HOSTED_ORIGIN,
@@ -1187,10 +1344,6 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
       [
         "https://reader:hunter2@gitlab.example.com/acme/shop.git",
         "kerpeten review: --mr 12: the origin remote is on gitlab.example.com, which is neither github.com nor gitlab.com: set `platform: github` or `platform: gitlab` in .kerpeten.yml",
-      ],
-      [
-        "no origin",
-        "kerpeten review: --mr 12: this repository has no origin remote to tell the platform from: set `platform: github` or `platform: gitlab` in .kerpeten.yml",
       ],
     ];
 
@@ -1399,7 +1552,7 @@ describe("kerpeten review --dry-run --mr on a GitLab repository: the comment pla
     expect(result.code).toBe(ExitCode.FAILED);
 
     expect(result.err).toContain(
-      "kerpeten review: --mr 12: the comments of the merge request could not all be read, so the review cannot tell which findings are already written: projects/:fullpath/merge_requests/12/discussions: glab api failed (exit 1): glab: 502 Bad Gateway (HTTP 502)",
+      "kerpeten review: --mr 12: the comments of the merge request could not all be read, so the review cannot tell which findings are already written: projects/acme%2Fshop/merge_requests/12/discussions: glab api failed (exit 1): glab: 502 Bad Gateway (HTTP 502)",
     );
 
     expect(result.out).toBe("");
@@ -1420,7 +1573,7 @@ describe("kerpeten review --dry-run --mr on a GitLab repository: the comment pla
     expect(garbled.code).toBe(ExitCode.FAILED);
 
     expect(garbled.err).toContain(
-      "the comments of the merge request could not all be read, so the review cannot tell which findings are already written: projects/:fullpath/merge_requests/12/discussions: the answer of glab is not the lines of entries it should be; projects/:fullpath/merge_requests/12/discussions: 1 of 2 entries cannot be read",
+      "the comments of the merge request could not all be read, so the review cannot tell which findings are already written: projects/acme%2Fshop/merge_requests/12/discussions: the answer of glab is not the lines of entries it should be; projects/acme%2Fshop/merge_requests/12/discussions: 1 of 2 entries cannot be read",
     );
 
     expect(garbled.calls.length).toBe(0);
@@ -1444,7 +1597,11 @@ describe("kerpeten review --dry-run --mr on a GitLab repository: the comment pla
     );
 
     expect(result.code).toBe(ExitCode.USAGE);
-    expect(result.err).toContain("kerpeten review: --mr 12: GitLab did not accept the sign-in of glab (HTTP 401): run");
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: GitLab at gitlab.com did not accept the sign-in of glab (HTTP 401): run",
+    );
+
     expect(result.out).toBe("");
     expect(result.calls.length).toBe(0);
   });

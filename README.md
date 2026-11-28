@@ -74,7 +74,7 @@ findings: 4
    kerpeten review --dry-run
    ```
 
-The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base. `--mr <n>` reviews GitHub pull request `n` or GitLab merge request `n` with its title and description, read through the GitHub CLI (`gh`) or the GitLab CLI (`glab`).
+The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base. `--mr <n>` reviews GitHub pull request `n` or GitLab merge request `n` of the project the `origin` remote names, with its title and description, read through the GitHub CLI (`gh`) or the GitLab CLI (`glab`).
 
 ## Models
 

@@ -2,54 +2,60 @@ import { Inject } from "@asenajs/ioc";
 import type { z } from "zod";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
-import {
-  Capability,
-  ProcessCapability,
-  type ProcessResult,
-  type ProcessSettings,
-  RunValue,
-} from "../../harness-kit/index.ts";
-import { errorMessage, terminalLine } from "../../text/text-utils.ts";
+import { Capability, ProcessCapability, type ProcessSettings, RunValue, Use } from "../../harness-kit/index.ts";
+import { terminalLine } from "../../text/text-utils.ts";
 import { JsonLines } from "./JsonLines.ts";
+import { LimitedOutput } from "./LimitedOutput.ts";
+import { OriginProject } from "./OriginProject.ts";
 import { PlatformError } from "./PlatformError.ts";
+import { PlatformLimits } from "./PlatformLimits.ts";
+import type { RemoteProject } from "./RemoteProject.ts";
 import { gitlabDiscussionSchema, gitlabMergeRequestSchema } from "./schemas/gitlab-schema.ts";
-import type {
-  GitLabDiscussion,
-  GitLabMergeRequest,
-  GitLabNote,
-  GitLabPlace,
-  GitLabPosition,
-  GitLabSide,
-} from "./types/gitlab.ts";
+import type { GitLabDiscussion, GitLabMergeRequest, GitLabNote, GitLabPlace, GitLabPosition } from "./types/gitlab.ts";
 import type {
   MergeRequest,
   MergeRequestState,
   Platform,
   PlatformComment,
   PlatformComments,
+  PlatformExit,
   PlatformLines,
   PlatformList,
+  PlatformRead,
+  PlatformReadLimits,
+  PlatformSide,
+  PlatformStop,
 } from "./types/platform.ts";
 
 /**
  * GitLab behind the `Platform` interface: reads a merge request and its comments with `glab api` in the run's
- * repository, so the sign-in is the one of the GitLab CLI and Kerpeten holds no GitLab token. glab fills `:fullpath`
- * from the repository of the working directory; in a clone with several remotes it takes the one it was told is the
- * base, else the remote named `upstream`, then `gitlab`, then `origin`. Its output is a pipe here, so it never asks.
+ * repository, so the sign-in is the one of the GitLab CLI and Kerpeten holds no GitLab token.
+ *
+ * The project is the one the `origin` remote names, and glab chooses nothing: every call names the host with
+ * `--hostname` and the full path of the project, as one encoded segment, in its path. glab's own choice among several
+ * remotes, which takes the one it was told is the base, else a remote named `upstream`, then `gitlab`, then `origin`,
+ * plays no part, so the merge request of another project with the same number is never read. The answer is checked
+ * to be of that project all the same.
  *
  * `glab api` can do whatever the sign-in can. So every public method is typed and builds its own arguments, each call
  * is a GET, and no method takes arguments from its caller. The capability declares no permission, so no tool of a
- * model can take it. What it reads is outside data: nothing of it is run or used as an argument.
+ * model can take it. What it reads is outside data: nothing of it is run. The host and the path of the origin remote
+ * are the one outside data that becomes part of an argument, and `RemoteProject` lets through only what a host name
+ * and the path of a project can be.
  *
  * glab gets the program's environment with two settings of its own. `GLAB_COLOR=never` keeps color codes out of what
  * it prints, whatever its configuration says. `GLAB_CHECK_UPDATE=false` turns off its daily look for a new version,
  * which writes a notice to stderr and, when the look itself fails, can write a hint to stdout after the answer. Every
  * answer is asked for as lines of JSON, a form glab neither colors nor indents.
+ *
+ * Every read has a budget, `PlatformLimits`: the bytes glab may print and the time it may take. A read that reaches
+ * either is stopped. For the merge request that is an error; for the discussions the result is incomplete and says
+ * which limit stopped it.
  */
 @Capability({
   name: "gitlab-platform",
   description:
-    "Reads a merge request and its comments from GitLab with glab api in the repository, through typed methods that only read; no tool can take it.",
+    "Reads a merge request and its comments from GitLab with glab api, from the project the origin remote names, through typed methods that only read; no tool can take it.",
   scope: "run",
 })
 export class GitLabPlatform extends ProcessCapability implements Platform {
@@ -76,6 +82,15 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
     merged: "merged",
   };
 
+  private static readonly WEB_PATH = /^\/(.+?)(?:\/-)?\/merge_requests\/[0-9]+\/?$/;
+
+  private static readonly MS_PER_SECOND = 1000;
+
+  private static readonly PROJECT_NAMES = 2;
+
+  @Use(OriginProject)
+  private readonly origin!: OriginProject;
+
   @Inject(Names.ENV)
   private readonly env!: Instances[Names.ENV];
 
@@ -88,27 +103,26 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
     }
   }
 
-  private static failure(result: ProcessResult, number: number): PlatformError {
+  /**
+   * Why a read of glab failed. glab sends the request without a sign-in to a host it is not signed in to, and keeps
+   * a token of the environment from a host it does not know; GitLab answers that with 401, or with 404 for a project
+   * that is not public.
+   */
+  private static failure(result: PlatformExit, number: number, project: RemoteProject): PlatformError {
     const stderr = terminalLine(result.stderr).replace(GitLabPlatform.ERROR_TITLE, "");
-
-    if (stderr.includes("unable to expand placeholder")) {
-      return new PlatformError(
-        "no_repository",
-        "glab finds no GitLab project in this folder: run inside a clone whose remote is on GitLab; for a GitLab host of your own, sign glab in to it first with `glab auth login --hostname <host>`",
-      );
-    }
+    const signIn = `\`glab auth login --hostname ${project.host}\``;
 
     if (stderr.includes("HTTP 401")) {
       return new PlatformError(
         "signed_out",
-        "GitLab did not accept the sign-in of glab (HTTP 401): run `glab auth login`, or correct the token in GITLAB_TOKEN when that variable is set, and run again",
+        `GitLab at ${project.host} did not accept the sign-in of glab (HTTP 401): run ${signIn}, or correct the token in GITLAB_TOKEN when that variable is set, and run again`,
       );
     }
 
     if (stderr.includes("HTTP 404")) {
       return new PlatformError(
         "not_found",
-        `merge request ${number} was not found in the GitLab project of this folder: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in (\`glab auth login\`) with an account that can read the project`,
+        `merge request ${number} was not found in ${project.name}, the project of the origin remote: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in to ${project.host} (${signIn}) with an account that can read the project; a merge request of another project, such as the one a fork was made from, is not read`,
       );
     }
 
@@ -122,7 +136,8 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
     return new PlatformError("failed", `the answer of glab for merge request ${number} cannot be read: ${reason}`);
   }
 
-  private static host(mergeRequest: GitLabMergeRequest): string {
+  /** The address of the merge request on the web, which names its host and the path of its project. */
+  private static web(mergeRequest: GitLabMergeRequest): URL {
     let url: URL;
 
     try {
@@ -133,7 +148,14 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
 
     if (url.host === "") throw GitLabPlatform.unreadable(mergeRequest.iid, "web_url has no host");
 
-    return url.host.toLowerCase();
+    return url;
+  }
+
+  /** What a read that was stopped at a limit says, after the name of what was read. */
+  private static stopped(read: PlatformStop): string {
+    if (read.kind === "too_large") return `glab printed more than ${read.bytes} bytes, and the read stopped there`;
+
+    return `glab did not finish within ${read.ms / GitLabPlatform.MS_PER_SECOND} seconds, and the read stopped there`;
   }
 
   private static state(mergeRequest: GitLabMergeRequest): MergeRequestState {
@@ -148,7 +170,7 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
   }
 
   /** The side a position is on: the file before the change only for a line the change removed. */
-  private static side(position: GitLabPosition): GitLabSide {
+  private static side(position: GitLabPosition): PlatformSide {
     const removed = position.position_type === "text" && (position.new_line ?? undefined) === undefined;
 
     return removed && (position.old_line ?? undefined) !== undefined ? "old" : "new";
@@ -156,9 +178,10 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
 
   /**
    * The lines of a position on its side: the range when it has one, else its one line, and none for a position on a
-   * whole file. An end of the range that has no line on that side takes the position's own line.
+   * whole file. An end of the range that has no line on that side takes the position's own line, which is the last
+   * line of the range; so a range whose first line is on the other side gives its last line alone.
    */
-  private static lines(position: GitLabPosition, side: GitLabSide): PlatformLines | null {
+  private static lines(position: GitLabPosition, side: PlatformSide): PlatformLines | null {
     const own = (side === "old" ? position.old_line : position.new_line) ?? undefined;
 
     if (position.position_type !== "text" || own === undefined) return null;
@@ -174,25 +197,27 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
   }
 
   /**
-   * Where a note with a position sits. On the new side it is the file and the lines at the head commit the note was
-   * written on. A note on a removed line has no line there: it is the file and the line as they were at the base
-   * commit, where that line still is.
+   * Where a note with a position sits, in the fields of a platform comment: the file by its path after the change,
+   * the old path only when GitLab gives no new one; the head commit of the diff the note was written on; and the
+   * lines with their side, the old side for a note on a line the change removed. A note on a whole file has no lines
+   * and no side.
    */
   private static place(position: GitLabPosition): GitLabPlace {
     const side = GitLabPlatform.side(position);
-
-    const { new_path: newPath, old_path: oldPath } = position;
+    const lines = GitLabPlatform.lines(position, side);
 
     return {
-      file: (side === "old" ? (oldPath ?? newPath) : (newPath ?? oldPath)) ?? null,
-      lines: GitLabPlatform.lines(position, side),
-      commit: side === "old" ? position.base_sha : position.head_sha,
+      file: position.new_path ?? position.old_path ?? null,
+      lines,
+      side: lines === null ? null : side,
+      commit: position.head_sha,
     };
   }
 
   private static comment(note: GitLabNote, replyTo: string | null): PlatformComment {
     const position = note.position ?? undefined;
-    const place = position === undefined ? { file: null, lines: null, commit: null } : GitLabPlatform.place(position);
+    const none: GitLabPlace = { file: null, lines: null, side: null, commit: null };
+    const place = position === undefined ? none : GitLabPlatform.place(position);
 
     return {
       id: String(note.id),
@@ -218,14 +243,20 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
   /**
    * The merge request `number` of the project, where `number` is the one inside the project, its `iid`. A read that
    * fails throws a `PlatformError`, and so do an answer that is not the merge request asked for, a merge request
-   * GitLab is merging right now and one that has no diff yet.
+   * GitLab is merging right now and one that has no diff yet. The project is the one of the `origin` remote, and an
+   * answer of another project is an error too.
    */
   public async mergeRequest(number: number): Promise<MergeRequest> {
     GitLabPlatform.assertNumber(number);
 
-    const result = await this.get([`projects/:fullpath/merge_requests/${number}`]);
+    const project = await this.project();
+    const result = await this.get(project, [`projects/${project.segment}/merge_requests/${number}`]);
 
-    if (result.exitCode !== 0) throw GitLabPlatform.failure(result, number);
+    if (result.kind !== "exited") {
+      throw new PlatformError("failed", `merge request ${number} was not read: ${GitLabPlatform.stopped(result)}`);
+    }
+
+    if (result.exitCode !== 0) throw GitLabPlatform.failure(result, number, project);
 
     let answer: unknown;
 
@@ -249,6 +280,18 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
       throw GitLabPlatform.unreadable(number, `it is merge request ${mergeRequest.iid}`);
     }
 
+    const web = GitLabPlatform.web(mergeRequest);
+    const webPath = GitLabPlatform.WEB_PATH.exec(web.pathname)?.[1];
+
+    if (webPath === undefined) throw GitLabPlatform.unreadable(number, "web_url names no project");
+
+    if (!project.is(webPath)) {
+      throw new PlatformError(
+        "failed",
+        `glab answered with a merge request of ${JSON.stringify(terminalLine(webPath))}, not of ${project.path}, the project of the origin remote; when the project was renamed or moved, point the origin remote at its new address and run again`,
+      );
+    }
+
     const state = GitLabPlatform.state(mergeRequest);
 
     if (mergeRequest.sha === null || mergeRequest.diff_refs === null) {
@@ -260,7 +303,7 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
 
     return {
       kind: "gitlab",
-      host: GitLabPlatform.host(mergeRequest),
+      host: web.host.toLowerCase(),
       projectId: String(mergeRequest.target_project_id),
       number: mergeRequest.iid,
       title: mergeRequest.title,
@@ -277,14 +320,19 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
    * their last page. The lines GitLab writes itself about events are no comments and are left out. A note in the diff
    * is a line comment, every other note a general one; in a discussion, every note after the first answers the first.
    * A list that glab did not read to its end, or whose entries cannot all be read, makes the result incomplete: it
-   * holds what was read, and `problems` names the list. A missing glab, a sign-in GitLab does not accept, an unknown
-   * merge request and a folder without a GitLab project throw a `PlatformError`, because then nothing can be read.
+   * holds what was read, and `problems` names the list. So does a list that is larger than the byte limit of a read
+   * or takes longer than its time limit: the entries that stand whole before the stop are kept. A missing glab, a
+   * sign-in GitLab does not accept, an unknown merge request and an `origin` remote that names no GitLab project
+   * throw a `PlatformError`, because then nothing can be read.
    */
   public async comments(number: number): Promise<PlatformComments> {
     GitLabPlatform.assertNumber(number);
 
+    const project = await this.project();
+
     const discussions = await this.list(
-      `projects/:fullpath/merge_requests/${number}/discussions`,
+      project,
+      `projects/${project.segment}/merge_requests/${number}/discussions`,
       number,
       gitlabDiscussionSchema,
     );
@@ -315,26 +363,68 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
     return { ...env, ...GitLabPlatform.SETTINGS };
   }
 
-  private async get(args: readonly string[]): Promise<ProcessResult> {
-    try {
-      return await this.collect([...GitLabPlatform.READ, ...args]);
-    } catch (error) {
-      const reason = terminalLine(errorMessage(error));
+  /** The budget of one read of glab. */
+  protected readLimits(): PlatformReadLimits {
+    return { bytes: PlatformLimits.READ_BYTES, ms: PlatformLimits.READ_MS };
+  }
 
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
-        throw new PlatformError("failed", `glab cannot be run: ${reason}`);
-      }
+  /** The project of the `origin` remote, which on GitLab is a namespace and a name at least. */
+  private async project(): Promise<RemoteProject> {
+    const project = await this.origin.project();
 
+    if (project.names.length < GitLabPlatform.PROJECT_NAMES) {
       throw new PlatformError(
-        "cli_missing",
-        `glab, the GitLab CLI, is not found (${reason}): install it from https://gitlab.com/gitlab-org/cli and run again`,
+        "no_repository",
+        `the origin remote names ${project.name}, which is no GitLab project: a project is a namespace and a name, <namespace>/<name>`,
       );
+    }
+
+    return project;
+  }
+
+  /**
+   * Runs one GET of glab on the host of `project`, inside the budget of a read, and gives what it printed and how it
+   * ended. A glab that cannot be started throws a `PlatformError`.
+   */
+  private async get(project: RemoteProject, args: readonly string[]): Promise<PlatformRead> {
+    const { bytes, ms } = this.readLimits();
+    const output = new LimitedOutput(bytes);
+    const read = [...GitLabPlatform.READ, "--hostname", project.host, ...args];
+    const outcome = await this.stream(read, (chunk) => output.take(chunk), ms);
+
+    switch (outcome.kind) {
+      case "not_started": {
+        const reason = terminalLine(outcome.error);
+
+        if (outcome.code !== "ENOENT") throw new PlatformError("failed", `glab cannot be run: ${reason}`);
+
+        throw new PlatformError(
+          "cli_missing",
+          `glab, the GitLab CLI, is not found (${reason}): install it from https://gitlab.com/gitlab-org/cli and run again`,
+        );
+      }
+      case "timed_out":
+        return { kind: "timed_out", stdout: output.bytes, ms };
+      case "stopped":
+        return { kind: "too_large", stdout: output.bytes, bytes };
+      case "exited":
+        return { kind: "exited", exitCode: outcome.exitCode, stdout: output.bytes, stderr: outcome.stderr };
     }
   }
 
-  private async list<T>(path: string, number: number, schema: z.ZodType<T>): Promise<PlatformList<T>> {
-    const result = await this.get([...GitLabPlatform.ALL_PAGES, `${path}?per_page=${GitLabPlatform.PAGE_SIZE}`]);
-    const failure = result.exitCode === 0 ? undefined : GitLabPlatform.failure(result, number);
+  private async list<T>(
+    project: RemoteProject,
+    path: string,
+    number: number,
+    schema: z.ZodType<T>,
+  ): Promise<PlatformList<T>> {
+    const result = await this.get(project, [
+      ...GitLabPlatform.ALL_PAGES,
+      `${path}?per_page=${GitLabPlatform.PAGE_SIZE}`,
+    ]);
+
+    const failure =
+      result.kind !== "exited" || result.exitCode === 0 ? undefined : GitLabPlatform.failure(result, number, project);
 
     if (failure !== undefined && failure.kind !== "failed") throw failure;
 
@@ -350,7 +440,8 @@ export class GitLabPlatform extends ProcessCapability implements Platform {
 
     const unread = lines.items.length - items.length;
 
-    if (failure !== undefined) problems.push(`${path}: ${failure.message}`);
+    if (result.kind !== "exited") problems.push(`${path}: ${GitLabPlatform.stopped(result)}`);
+    else if (failure !== undefined) problems.push(`${path}: ${failure.message}`);
     else if (!lines.whole) problems.push(`${path}: the answer of glab is not the lines of entries it should be`);
 
     if (unread > 0) problems.push(`${path}: ${unread} of ${lines.items.length} entries cannot be read`);

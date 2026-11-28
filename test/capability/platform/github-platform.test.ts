@@ -4,18 +4,35 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KerpetenApp } from "../../../src/app/KerpetenApp.ts";
 import { GitHubPlatform } from "../../../src/capability/platform/GitHubPlatform.ts";
+import { LimitedOutput } from "../../../src/capability/platform/LimitedOutput.ts";
 import { PlatformError } from "../../../src/capability/platform/PlatformError.ts";
+import { PlatformLimits } from "../../../src/capability/platform/PlatformLimits.ts";
 import { SlurpedPages } from "../../../src/capability/platform/SlurpedPages.ts";
-import type { PlatformFailure } from "../../../src/capability/platform/types/platform.ts";
+import type { PlatformFailure, PlatformReadLimits } from "../../../src/capability/platform/types/platform.ts";
 import { PermissionGroupSet, Run } from "../../../src/harness-kit/index.ts";
 import { runComponent } from "../../app/app-utils.ts";
-import { cliDirs, fakeGh, ghCalls, ghPaths, pullJson, SHA_A, SHA_B, SHA_C, slurped } from "./platform-utils.ts";
+import { sh } from "../git/git-utils.ts";
+import {
+  cliDirs,
+  fakeGh,
+  GITHUB_ORIGIN,
+  ghCalls,
+  ghPaths,
+  originRepo,
+  pullJson,
+  SHA_A,
+  SHA_B,
+  SHA_C,
+  slurped,
+} from "./platform-utils.ts";
 import { TestGitHubPlatform } from "./TestGitHubPlatform.ts";
 import type { GhAnswer } from "./types/platform.ts";
 
 const COMPONENTS = [...KerpetenApp.COMPONENTS.filter((component) => component !== GitHubPlatform), TestGitHubPlatform];
 
-const READ = ["api", "--method", "GET"];
+const READ = ["api", "--method", "GET", "--hostname", "github.com"];
+
+const LIMITS: PlatformReadLimits = { bytes: PlatformLimits.READ_BYTES, ms: PlatformLimits.READ_MS };
 
 const paths = ghPaths(12);
 
@@ -25,17 +42,26 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function tempDir(): string {
+/** A new repository whose remote `origin` is at `origin`, the test repository on github.com when none is given. */
+function tempDir(origin: string = GITHUB_ORIGIN): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "kerpeten-platform-")));
 
   dirs.push(dir);
 
-  return dir;
+  return originRepo(dir, origin === "no origin" ? undefined : origin);
 }
 
-/** The platform of a new run in `dir`, with a fake gh there that gives `answers`. */
-function platform(dir: string, answers: Readonly<Record<string, GhAnswer>>): Promise<TestGitHubPlatform> {
-  return runComponent(TestGitHubPlatform, { repo: dir, ghCommand: fakeGh(dir, answers) }, { components: COMPONENTS });
+/** The platform of a new run in `dir`, with a fake gh there that gives `answers`, and with the read budget `limits`. */
+function platform(
+  dir: string,
+  answers: Readonly<Record<string, GhAnswer>>,
+  limits: PlatformReadLimits = LIMITS,
+): Promise<TestGitHubPlatform> {
+  return runComponent(
+    TestGitHubPlatform,
+    { repo: dir, ghCommand: fakeGh(dir, answers), ghLimits: limits },
+    { components: COMPONENTS },
+  );
 }
 
 async function failure(read: Promise<unknown>): Promise<PlatformError> {
@@ -55,6 +81,9 @@ const lineComment = {
   user: { login: "ada" },
   body: "y can be 0",
   path: "src/a.ts",
+  subject_type: "line",
+  side: "RIGHT",
+  start_side: null,
   line: 7,
   start_line: null,
   original_line: 7,
@@ -88,7 +117,7 @@ describe("GitHub platform: the pull request", () => {
       baseRef: "main",
     });
 
-    expect(ghCalls(dir)).toEqual([[...READ, "repos/{owner}/{repo}/pulls/12"]]);
+    expect(ghCalls(dir)).toEqual([[...READ, "repos/Acme/Shop/pulls/12"]]);
     expect(cliDirs(dir, "gh")).toEqual([dir]);
   });
 
@@ -123,20 +152,25 @@ describe("GitHub platform: the pull request", () => {
       [
         { exitCode: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" },
         "signed_out",
-        "gh is not signed in to GitHub: run `gh auth login` and run again",
+        "gh is not signed in to github.com: run `gh auth login --hostname github.com` and run again",
+      ],
+      [
+        { exitCode: 1, stderr: "gh: Bad credentials (HTTP 401)\n", stdout: '{"message":"Bad credentials"}' },
+        "signed_out",
+        "gh is not signed in to github.com: run `gh auth login --hostname github.com` and run again",
       ],
       [
         { exitCode: 1, stderr: "gh: Not Found (HTTP 404)\n", stdout: '{"message":"Not Found","status":"404"}' },
         "not_found",
-        "pull request 12 was not found in the GitHub repository of this folder: check the number, and that the sign-in of gh can read the repository",
+        "pull request 12 was not found in github.com/Acme/Shop, the repository of the origin remote: check the number, and that gh is signed in to github.com with an account that can read the repository; a pull request of another repository, such as the one a fork was made from, is not read",
       ],
       [
         {
           exitCode: 1,
-          stderr: "unable to expand placeholder in path: failed to run git: fatal: not a git repository\n",
+          stderr: "error connecting to github.com\ncheck your internet connection or https://githubstatus.com\n",
         },
-        "no_repository",
-        "gh finds no GitHub repository in this folder: run inside a clone whose remote is on GitHub",
+        "failed",
+        "gh api failed (exit 1): error connecting to github.com check your internet connection or https://githubstatus.com",
       ],
       [
         { exitCode: 1, stderr: "\n  gh: Server Error (HTTP 502)\n\n" },
@@ -158,7 +192,7 @@ describe("GitHub platform: the pull request", () => {
 
     const github = await runComponent(
       TestGitHubPlatform,
-      { repo: dir, ghCommand: join(dir, "no-gh-here") },
+      { repo: dir, ghCommand: join(dir, "no-gh-here"), ghLimits: LIMITS },
       { components: COMPONENTS },
     );
 
@@ -213,33 +247,36 @@ describe("GitHub platform: the comments", () => {
     expect(await github.comments(12)).toEqual({ comments: [], complete: true, problems: [] });
 
     expect(ghCalls(dir)).toEqual([
-      [...READ, "--paginate", "--slurp", "repos/{owner}/{repo}/pulls/12/comments?per_page=100"],
-      [...READ, "--paginate", "--slurp", "repos/{owner}/{repo}/pulls/12/reviews?per_page=100"],
-      [...READ, "--paginate", "--slurp", "repos/{owner}/{repo}/issues/12/comments?per_page=100"],
+      [...READ, "--paginate", "--slurp", "repos/Acme/Shop/pulls/12/comments?per_page=100"],
+      [...READ, "--paginate", "--slurp", "repos/Acme/Shop/pulls/12/reviews?per_page=100"],
+      [...READ, "--paginate", "--slurp", "repos/Acme/Shop/issues/12/comments?per_page=100"],
     ]);
   });
 
   test("gives the comments on lines of every page, with replies, ranges, outdated places and missing authors", async () => {
     const reply = { ...lineComment, id: 102, user: { login: "bob" }, body: "it cannot", in_reply_to_id: 101 };
-    const range = { ...lineComment, id: 103, line: 9, start_line: 4 };
+    const range = { ...lineComment, id: 103, line: 9, start_line: 4, start_side: "RIGHT" };
 
     const outdated = {
       ...lineComment,
       id: 104,
       user: null,
+      start_side: "RIGHT",
       line: null,
       original_line: 30,
       original_start_line: 28,
     };
 
     const wholeFile = { ...lineComment, id: 105, line: null, original_line: null };
+    const fileSubject = { ...lineComment, id: 106, subject_type: "file", line: 1, original_line: 1 };
 
     const github = await platform(tempDir(), {
       ...emptyLists,
-      [paths.comments]: { stdout: slurped([lineComment, reply], [range, outdated, wholeFile]) },
+      [paths.comments]: { stdout: slurped([lineComment, reply], [range, outdated, wholeFile, fileSubject]) },
     });
 
-    const onLine = { kind: "line", file: "src/a.ts", createdAt: "2026-11-20T10:00:00Z" } as const;
+    const onLine = { kind: "line", file: "src/a.ts", side: "new", createdAt: "2026-11-20T10:00:00Z" } as const;
+    const onFile = { ...onLine, author: "ada", body: "y can be 0", lines: null, side: null, replyTo: null };
 
     expect(await github.comments(12)).toEqual({
       comments: [
@@ -279,11 +316,75 @@ describe("GitHub platform: the comments", () => {
           commit: SHA_B,
           replyTo: null,
         },
-        { ...onLine, id: "105", author: "ada", body: "y can be 0", lines: null, commit: SHA_B, replyTo: null },
+        { ...onFile, id: "105", commit: SHA_B },
+        { ...onFile, id: "106", commit: SHA_A },
       ],
       complete: true,
       problems: [],
     });
+  });
+
+  test("a comment says which side its lines are on: the old side for a line the change removed", async () => {
+    const removed = { ...lineComment, id: 111, side: "LEFT", line: 320, original_line: 320 };
+    const removedRange = { ...removed, id: 112, start_side: "LEFT", start_line: 318, original_start_line: 318 };
+
+    const outdatedRemoved = {
+      ...removedRange,
+      id: 113,
+      line: null,
+      start_line: null,
+      original_line: 30,
+      original_start_line: 28,
+    };
+
+    const crossing = {
+      ...lineComment,
+      id: 114,
+      side: "RIGHT",
+      start_side: "LEFT",
+      line: 598,
+      start_line: 581,
+      original_line: 592,
+      original_start_line: 581,
+    };
+
+    const crossingBack = { ...crossing, id: 115, side: "LEFT", start_side: "RIGHT", line: 40, start_line: 44 };
+    const outdatedCrossing = { ...crossing, id: 116, line: null, start_line: null };
+
+    const github = await platform(tempDir(), {
+      ...emptyLists,
+      [paths.comments]: {
+        stdout: slurped([removed, removedRange, outdatedRemoved, crossing, crossingBack, outdatedCrossing]),
+      },
+    });
+
+    const read = await github.comments(12);
+
+    expect(read.complete).toBe(true);
+
+    expect(read.comments.map(({ id, file, lines, side, commit }) => ({ id, file, lines, side, commit }))).toEqual([
+      { id: "111", file: "src/a.ts", lines: { start: 320, end: 320 }, side: "old", commit: SHA_A },
+      { id: "112", file: "src/a.ts", lines: { start: 318, end: 320 }, side: "old", commit: SHA_A },
+      { id: "113", file: "src/a.ts", lines: { start: 28, end: 30 }, side: "old", commit: SHA_B },
+      { id: "114", file: "src/a.ts", lines: { start: 598, end: 598 }, side: "new", commit: SHA_A },
+      { id: "115", file: "src/a.ts", lines: { start: 40, end: 40 }, side: "old", commit: SHA_A },
+      { id: "116", file: "src/a.ts", lines: { start: 592, end: 592 }, side: "new", commit: SHA_B },
+    ]);
+  });
+
+  test("a comment on lines whose side gh does not name cannot be read: its side is not guessed", async () => {
+    const { side: _side, ...sideless } = lineComment;
+
+    const github = await platform(tempDir(), {
+      ...emptyLists,
+      [paths.comments]: { stdout: slurped([lineComment, sideless, { ...lineComment, id: 103, side: "CENTER" }]) },
+    });
+
+    const read = await github.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101"]);
+    expect(read.complete).toBe(false);
+    expect(read.problems).toEqual(["repos/Acme/Shop/pulls/12/comments: 2 of 3 entries cannot be read"]);
   });
 
   test("a review with a body and a comment of the conversation are general comments; a review without a body is none", async () => {
@@ -309,7 +410,7 @@ describe("GitHub platform: the comments", () => {
       [paths.conversation]: { stdout: slurped(conversation) },
     });
 
-    const general = { kind: "general", file: null, lines: null, replyTo: null } as const;
+    const general = { kind: "general", file: null, lines: null, side: null, replyTo: null } as const;
 
     expect(await github.comments(12)).toEqual({
       comments: [
@@ -347,7 +448,7 @@ describe("GitHub platform: the comments", () => {
     expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102", "301"]);
 
     expect(read.problems).toEqual([
-      "repos/{owner}/{repo}/pulls/12/comments: gh api failed (exit 1): gh: Server Error (HTTP 502)",
+      "repos/Acme/Shop/pulls/12/comments: gh api failed (exit 1): gh: Server Error (HTTP 502)",
     ]);
   });
 
@@ -360,7 +461,7 @@ describe("GitHub platform: the comments", () => {
     expect(await github.comments(12)).toEqual({
       comments: [],
       complete: false,
-      problems: ["repos/{owner}/{repo}/pulls/12/reviews: gh api failed (exit 1): gh: rate limit"],
+      problems: ["repos/Acme/Shop/pulls/12/reviews: gh api failed (exit 1): gh: rate limit"],
     });
   });
 
@@ -377,17 +478,17 @@ describe("GitHub platform: the comments", () => {
     expect(read.comments.map((comment) => comment.id)).toEqual(["101"]);
 
     expect(read.problems).toEqual([
-      "repos/{owner}/{repo}/pulls/12/comments: 2 of 3 entries cannot be read",
-      "repos/{owner}/{repo}/pulls/12/reviews: the answer of gh is not the list of pages it should be",
-      "repos/{owner}/{repo}/issues/12/comments: the answer of gh is not the list of pages it should be",
+      "repos/Acme/Shop/pulls/12/comments: 2 of 3 entries cannot be read",
+      "repos/Acme/Shop/pulls/12/reviews: the answer of gh is not the list of pages it should be",
+      "repos/Acme/Shop/issues/12/comments: the answer of gh is not the list of pages it should be",
     ]);
   });
 
-  test("a missing sign-in, an unknown pull request and a folder without a repository are errors, not an incomplete result", async () => {
+  test("a missing sign-in and an unknown pull request are errors, not an incomplete result", async () => {
     const cases: [GhAnswer, PlatformFailure][] = [
       [{ exitCode: 4, stderr: "gh auth login\n" }, "signed_out"],
+      [{ exitCode: 1, stderr: "gh: Requires authentication (HTTP 401)\n" }, "signed_out"],
       [{ exitCode: 1, stderr: "gh: Not Found (HTTP 404)\n", stdout: '{"message":"Not Found"}' }, "not_found"],
-      [{ exitCode: 1, stderr: "unable to expand placeholder in path: no git remotes found\n" }, "no_repository"],
     ];
 
     for (const [answer, kind] of cases) {
@@ -395,6 +496,242 @@ describe("GitHub platform: the comments", () => {
 
       expect((await failure(github.comments(12))).kind).toBe(kind);
     }
+  });
+});
+
+describe("GitHub platform: the repository of the origin remote", () => {
+  const NEEDS =
+    "a review of a pull request or merge request reads it from the project of the origin remote, so the remote must be the address of a project on GitHub or GitLab";
+
+  test("every call names the host and the repository of the origin remote, whatever form its URL has", async () => {
+    const origins: [string, string, string][] = [
+      ["git@github.com:Acme/Shop.git", "github.com", "Acme/Shop"],
+      ["ssh://git@github.com:2222/Acme/Shop.git", "github.com", "Acme/Shop"],
+      ["https::https://github.com/Acme/Shop.git", "github.com", "Acme/Shop"],
+      ["https://reader:not-a-token@GHE.Example.com/Team/App", "ghe.example.com", "Team/App"],
+    ];
+
+    for (const [origin, host, repository] of origins) {
+      const dir = tempDir(origin);
+      const asked = ghPaths(12, repository);
+
+      const github = await platform(dir, {
+        [asked.pull]: { stdout: pullJson({ fullName: repository }) },
+        [asked.comments]: { stdout: slurped([]) },
+        [asked.reviews]: { stdout: slurped([]) },
+        [asked.conversation]: { stdout: slurped([]) },
+      });
+
+      expect((await github.mergeRequest(12)).number).toBe(12);
+      expect((await github.comments(12)).complete).toBe(true);
+
+      const read = ["api", "--method", "GET", "--hostname", host];
+
+      expect(ghCalls(dir)).toEqual([
+        [...read, `repos/${repository}/pulls/12`],
+        [...read, "--paginate", "--slurp", `repos/${repository}/pulls/12/comments?per_page=100`],
+        [...read, "--paginate", "--slurp", `repos/${repository}/pulls/12/reviews?per_page=100`],
+        [...read, "--paginate", "--slurp", `repos/${repository}/issues/12/comments?per_page=100`],
+      ]);
+    }
+  });
+
+  test("another remote plays no part: gh is left nothing to choose", async () => {
+    const dir = tempDir();
+
+    sh(dir, ["remote", "add", "upstream", "https://github.com/Other/Shop.git"]);
+
+    const github = await platform(dir, { [paths.pull]: { stdout: pullJson() } });
+
+    await github.mergeRequest(12);
+
+    expect(ghCalls(dir)).toEqual([[...READ, "repos/Acme/Shop/pulls/12"]]);
+    expect(ghCalls(dir).flat().join(" ")).not.toMatch(/[{}]|Other/);
+  });
+
+  test("an answer of another repository is a platform error, and upper or lower case makes no other repository", async () => {
+    const other = await platform(tempDir(), { [paths.pull]: { stdout: pullJson({ fullName: "Other/Shop" }) } });
+    const error = await failure(other.mergeRequest(12));
+
+    expect({ kind: error.kind, message: error.message }).toEqual({
+      kind: "failed",
+      message:
+        'gh answered with a pull request of "Other/Shop", not of Acme/Shop, the repository of the origin remote; when the repository was renamed or moved, point the origin remote at its new address and run again',
+    });
+
+    const sameInLowerCase = await platform(tempDir(), {
+      [paths.pull]: { stdout: pullJson({ fullName: "acme/shop" }) },
+    });
+
+    expect((await sameInLowerCase.mergeRequest(12)).number).toBe(12);
+  });
+
+  test("a repository without an origin remote, and an origin that names no repository on GitHub, stop before gh is called", async () => {
+    const cases: [string, string][] = [
+      [
+        "no origin",
+        "this repository has no origin remote: a review of a pull request or merge request reads it from the project of the origin remote, so add one with `git remote add origin <address of the project>`",
+      ],
+      ["/srv/git/shop.git", `the origin remote is a path on this machine: ${NEEDS}`],
+      [
+        "git@github.com:Acme/Group/Shop.git",
+        "the origin remote names github.com/Acme/Group/Shop, which is no GitHub repository: a repository is an owner and a name, <owner>/<name>",
+      ],
+      [
+        "https://github.com/Shop",
+        "the origin remote names github.com/Shop, which is no GitHub repository: a repository is an owner and a name, <owner>/<name>",
+      ],
+    ];
+
+    for (const [origin, message] of cases) {
+      const dir = tempDir(origin);
+      const github = await platform(dir, {});
+
+      for (const read of [github.mergeRequest(12), github.comments(12)]) {
+        const error = await failure(read);
+
+        expect({ kind: error.kind, message: error.message }).toEqual({ kind: "no_repository", message });
+      }
+
+      expect(ghCalls(dir)).toEqual([]);
+    }
+  });
+
+  test("nothing of a remote adds an argument, a second endpoint or a query to a call of gh", async () => {
+    const refused = [
+      "git@github.com:Acme/Shop --method DELETE",
+      "https://github.com/Acme/Shop?per_page=1&page=2",
+      "https://github.com/Acme/Shop#x",
+      "git@github.com:Acme/Shop/../../user/repos",
+      "https://github.com/Acme/Shop/../../orgs",
+      "https://github.com/Acme/Shop%2Fpulls%2F1",
+      "git@github.com:{owner}/{repo}",
+      "git@github.com:Acme/Shop/pulls/1/comments",
+      "git@--method=DELETE:Acme/Shop",
+      "ext::sh -c 'gh api --method DELETE repos/Acme/Shop'",
+    ];
+
+    for (const origin of refused) {
+      const dir = tempDir(origin);
+      const github = await platform(dir, {});
+
+      expect((await failure(github.mergeRequest(12))).kind).toBe("no_repository");
+      expect((await failure(github.comments(12))).kind).toBe("no_repository");
+      expect(ghCalls(dir)).toEqual([]);
+    }
+
+    const dir = tempDir("git@github.com:--method/-XDELETE.git");
+    const github = await platform(dir, {});
+
+    expect((await failure(github.mergeRequest(12))).kind).toBe("failed");
+    expect(ghCalls(dir)).toEqual([[...READ, "repos/--method/-XDELETE/pulls/12"]]);
+  });
+
+  test("a missing sign-in names the host of the origin remote", async () => {
+    const dir = tempDir("https://ghe.example.com/Team/App.git");
+    const asked = ghPaths(12, "Team/App");
+    const github = await platform(dir, { [asked.pull]: { exitCode: 1, stderr: "gh: Bad credentials (HTTP 401)\n" } });
+
+    expect((await failure(github.mergeRequest(12))).message).toBe(
+      "gh is not signed in to ghe.example.com: run `gh auth login --hostname ghe.example.com` and run again",
+    );
+  });
+});
+
+describe("GitHub platform: the budget of a read", () => {
+  const second = { ...lineComment, id: 102 };
+  const third = { ...lineComment, id: 103 };
+  const twoPages = `[${JSON.stringify([lineComment])},${JSON.stringify([second])}`;
+  const threePages = `${twoPages},${JSON.stringify([third])}]`;
+  const list = "repos/Acme/Shop/pulls/12/comments";
+
+  test("the budget is 20,000,000 bytes and two minutes for every read", () => {
+    expect(LIMITS).toEqual({ bytes: 20_000_000, ms: 120_000 });
+  });
+
+  test("a list larger than the byte limit stops there: the pages that stand whole are kept and the result is incomplete", async () => {
+    const bytes = twoPages.length + 5;
+    const dir = tempDir();
+
+    const github = await platform(
+      dir,
+      { ...emptyLists, [paths.comments]: { stdout: threePages } },
+      { bytes, ms: LIMITS.ms },
+    );
+
+    const read = await github.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102"]);
+    expect(read.complete).toBe(false);
+    expect(read.problems).toEqual([`${list}: gh printed more than ${bytes} bytes, and the read stopped there`]);
+    expect(ghCalls(dir).length).toBe(3);
+  });
+
+  test("a list of exactly the byte limit is whole", async () => {
+    const github = await platform(
+      tempDir(),
+      { ...emptyLists, [paths.comments]: { stdout: threePages } },
+      { bytes: threePages.length, ms: LIMITS.ms },
+    );
+
+    const read = await github.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102", "103"]);
+    expect(read).toMatchObject({ complete: true, problems: [] });
+  });
+
+  test("a list gh does not finish within the time limit stops there, with the pages it printed, and says so", async () => {
+    const github = await platform(
+      tempDir(),
+      { ...emptyLists, [paths.comments]: { stdout: `${twoPages},`, hangs: true } },
+      { bytes: LIMITS.bytes, ms: 300 },
+    );
+
+    const started = Date.now();
+    const read = await github.comments(12);
+
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(read.comments.map((comment) => comment.id)).toEqual(["101", "102"]);
+    expect(read.complete).toBe(false);
+    expect(read.problems).toEqual([`${list}: gh did not finish within 0.3 seconds, and the read stopped there`]);
+  });
+
+  test("a pull request read that reaches a limit is a platform error that names the limit", async () => {
+    const cases: [GhAnswer, PlatformReadLimits, string][] = [
+      [
+        { stdout: pullJson(), hangs: true },
+        { bytes: LIMITS.bytes, ms: 300 },
+        "pull request 12 was not read: gh did not finish within 0.3 seconds, and the read stopped there",
+      ],
+      [
+        { stdout: pullJson() },
+        { bytes: 100, ms: LIMITS.ms },
+        "pull request 12 was not read: gh printed more than 100 bytes, and the read stopped there",
+      ],
+    ];
+
+    for (const [answer, limits, message] of cases) {
+      const error = await failure((await platform(tempDir(), { [paths.pull]: answer }, limits)).mergeRequest(12));
+
+      expect({ kind: error.kind, message: error.message }).toEqual({ kind: "failed", message });
+    }
+  });
+
+  test("an output keeps the bytes up to its limit and says when the program printed more", () => {
+    const output = new LimitedOutput(5);
+
+    expect(output.take(Buffer.from("abc"))).toBe(true);
+    expect(output.take(Buffer.from("de"))).toBe(true);
+    expect(output.over).toBe(false);
+    expect(output.take(Buffer.from("fgh"))).toBe(false);
+    expect(output.over).toBe(true);
+    expect(output.bytes.toString()).toBe("abcde");
+
+    const cut = new LimitedOutput(4);
+
+    expect(cut.take(Buffer.from("abcdefgh"))).toBe(false);
+    expect(cut.bytes.toString()).toBe("abcd");
+    expect(new LimitedOutput(0).bytes.length).toBe(0);
   });
 });
 
@@ -418,7 +755,7 @@ describe("GitHub platform: the environment of gh", () => {
 
       const run = new Run(
         { group: PermissionGroupSet.ALL, every: true },
-        { values: { repo: dir, ghCommand }, container: app.container, test: true },
+        { values: { repo: dir, ghCommand, ghLimits: LIMITS }, container: app.container, test: true },
       );
 
       await (await run.ready(TestGitHubPlatform)).mergeRequest(12);

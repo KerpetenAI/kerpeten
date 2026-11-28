@@ -1,5 +1,6 @@
 import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { sh } from "../git/git-utils.ts";
 import type {
   CliAnswer,
   CliName,
@@ -15,25 +16,45 @@ export const SHA_A = "a".repeat(40);
 export const SHA_B = "b".repeat(40);
 export const SHA_C = "c".repeat(40);
 
+/** The origin remote of the test repositories on GitHub: the project the fake gh answers for. */
+export const GITHUB_ORIGIN = "https://github.com/Acme/Shop.git";
+
+/** The origin remote of the test repositories on GitLab: the project the fake glab answers for. */
+export const GITLAB_ORIGIN = "git@gitlab.com:acme/shop.git";
+
 function quoted(text: string): string {
   return `'${text.replaceAll("'", "'\\''")}'`;
 }
 
-/** The paths the platform asks gh for, word for word. */
-export function ghPaths(number: number): GhPaths {
+/** Makes `dir` a git repository whose remote `origin` is at `origin`, or one without a remote when none is given. */
+export function originRepo(dir: string, origin?: string): string {
+  sh(dir, ["init", "-q", "-b", "main"]);
+
+  if (origin !== undefined) sh(dir, ["remote", "add", "origin", origin]);
+
+  return dir;
+}
+
+/** The paths the platform asks gh for, word for word, for the repository `repository`, `Acme/Shop` when none is given. */
+export function ghPaths(number: number, repository = "Acme/Shop"): GhPaths {
   return {
-    pull: `repos/{owner}/{repo}/pulls/${number}`,
-    comments: `repos/{owner}/{repo}/pulls/${number}/comments?per_page=100`,
-    reviews: `repos/{owner}/{repo}/pulls/${number}/reviews?per_page=100`,
-    conversation: `repos/{owner}/{repo}/issues/${number}/comments?per_page=100`,
+    pull: `repos/${repository}/pulls/${number}`,
+    comments: `repos/${repository}/pulls/${number}/comments?per_page=100`,
+    reviews: `repos/${repository}/pulls/${number}/reviews?per_page=100`,
+    conversation: `repos/${repository}/issues/${number}/comments?per_page=100`,
   };
 }
 
-/** The paths the platform asks glab for, word for word. */
-export function glabPaths(number: number): GlabPaths {
+/**
+ * The paths the platform asks glab for, word for word, for the project `project`, `acme/shop` when none is given: the
+ * full path of the project is one encoded segment.
+ */
+export function glabPaths(number: number, project = "acme/shop"): GlabPaths {
+  const segment = encodeURIComponent(project);
+
   return {
-    mergeRequest: `projects/:fullpath/merge_requests/${number}`,
-    discussions: `projects/:fullpath/merge_requests/${number}/discussions?per_page=100`,
+    mergeRequest: `projects/${segment}/merge_requests/${number}`,
+    discussions: `projects/${segment}/merge_requests/${number}/discussions?per_page=100`,
   };
 }
 
@@ -41,7 +62,7 @@ export function glabPaths(number: number): GlabPaths {
  * Writes a script named `name` into `dir` and returns its path. It appends the arguments of every call to
  * `<name>-calls.txt` and its working directory to `<name>-cwd.txt`, runs `before`, and answers by its last argument,
  * the path, from `answers`; a path it has no answer for ends with 97. It uses only what the shell has built in, so it
- * needs no PATH.
+ * needs no PATH; an answer that hangs runs `/bin/sleep`.
  */
 export function fakeCli(dir: string, name: CliName, answers: Readonly<Record<string, CliAnswer>>, before = ""): string {
   const cases = Object.entries(answers).map(([path, answer]) =>
@@ -49,6 +70,7 @@ export function fakeCli(dir: string, name: CliName, answers: Readonly<Record<str
       `  ${quoted(path)})`,
       `    printf '%s' ${quoted(answer.stdout ?? "")}`,
       `    printf '%s' ${quoted(answer.stderr ?? "")} >&2`,
+      ...(answer.hangs === true ? ["    exec /bin/sleep 30"] : []),
       `    exit ${answer.exitCode ?? 0} ;;`,
     ].join("\n"),
   );
@@ -129,7 +151,11 @@ export function pullJson(fields: PullFields = {}): string {
     body: fields.body === undefined ? "Adds a division helper." : fields.body,
     user: { login: "octocat" },
     head: { sha: fields.headSha ?? SHA_A, ref: "feature", repo: { id: 99 } },
-    base: { sha: fields.baseSha ?? SHA_B, ref: "main", repo: { id: fields.repoId ?? 4242 } },
+    base: {
+      sha: fields.baseSha ?? SHA_B,
+      ref: "main",
+      repo: { id: fields.repoId ?? 4242, full_name: fields.fullName ?? "Acme/Shop" },
+    },
   });
 }
 
@@ -138,9 +164,12 @@ export function slurped(...pages: readonly (readonly unknown[])[]): string {
   return JSON.stringify(pages);
 }
 
-/** The answers of gh for a pull request that has no comment of any kind: three lists of one empty page. */
-export function noComments(number: number): Record<string, CliAnswer> {
-  const paths = ghPaths(number);
+/**
+ * The answers of gh for a pull request that has no comment of any kind: three lists of one empty page. The pull
+ * request is the one of `repository`, `Acme/Shop` when none is given.
+ */
+export function noComments(number: number, repository?: string): Record<string, CliAnswer> {
+  const paths = ghPaths(number, repository);
 
   return {
     [paths.comments]: { stdout: slurped([]) },
@@ -180,9 +209,12 @@ export function jsonLines(...entries: readonly unknown[]): string {
   return entries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
 }
 
-/** The answer of glab for a merge request that has no discussion: a list that prints nothing. */
-export function noDiscussions(number: number): Record<string, CliAnswer> {
-  return { [glabPaths(number).discussions]: { stdout: jsonLines() } };
+/**
+ * The answer of glab for a merge request that has no discussion: a list that prints nothing. The merge request is the
+ * one of `project`, `acme/shop` when none is given.
+ */
+export function noDiscussions(number: number, project?: string): Record<string, CliAnswer> {
+  return { [glabPaths(number, project).discussions]: { stdout: jsonLines() } };
 }
 
 /** The position of a note in the diff as GitLab gives it: on line 7 of the new side of `src/a.ts` when nothing is set. */

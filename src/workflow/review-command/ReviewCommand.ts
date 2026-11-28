@@ -29,7 +29,7 @@ import type { ReviewFlags } from "./types/review-command.ts";
 @Workflow({
   name: "review-command",
   description:
-    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews pull request n of a GitHub repository, read with gh, or merge request n of a GitLab repository, read with glab, with its title and description, and shows the comments a posted review would write to it, without writing them; HEAD must be its last commit. This build needs --dry-run.",
+    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews pull request n on GitHub, read with gh, or merge request n on GitLab, read with glab, of the project the origin remote names, with its title and description, and shows the comments a posted review would write to it, without writing them; HEAD must be its last commit. This build needs --dry-run.",
   steps: [ReviewFlagStep, ReviewSetupStep, ReviewWorkflow, ReviewOutcomeStep, ReviewPrintStep],
   command: {
     name: "review",

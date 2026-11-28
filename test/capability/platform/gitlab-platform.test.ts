@@ -6,18 +6,22 @@ import { KerpetenApp } from "../../../src/app/KerpetenApp.ts";
 import { GitLabPlatform } from "../../../src/capability/platform/GitLabPlatform.ts";
 import { JsonLines } from "../../../src/capability/platform/JsonLines.ts";
 import { PlatformError } from "../../../src/capability/platform/PlatformError.ts";
-import type { PlatformFailure } from "../../../src/capability/platform/types/platform.ts";
+import { PlatformLimits } from "../../../src/capability/platform/PlatformLimits.ts";
+import type { PlatformFailure, PlatformReadLimits } from "../../../src/capability/platform/types/platform.ts";
 import { PermissionGroupSet, Run } from "../../../src/harness-kit/index.ts";
 import { runComponent } from "../../app/app-utils.ts";
+import { sh } from "../git/git-utils.ts";
 import {
   cliDirs,
   discussion,
   fakeGlab,
+  GITLAB_ORIGIN,
   glabCalls,
   glabPaths,
   jsonLines,
   mergeRequestJson,
   note,
+  originRepo,
   position,
   SHA_A,
   SHA_B,
@@ -28,9 +32,11 @@ import type { CliAnswer } from "./types/platform.ts";
 
 const COMPONENTS = [...KerpetenApp.COMPONENTS.filter((component) => component !== GitLabPlatform), TestGitLabPlatform];
 
-const READ = ["api", "--method", "GET", "--output", "ndjson"];
+const READ = ["api", "--method", "GET", "--output", "ndjson", "--hostname", "gitlab.com"];
 
-const DISCUSSIONS = "projects/:fullpath/merge_requests/12/discussions";
+const LIMITS: PlatformReadLimits = { bytes: PlatformLimits.READ_BYTES, ms: PlatformLimits.READ_MS };
+
+const DISCUSSIONS = "projects/acme%2Fshop/merge_requests/12/discussions";
 
 const paths = glabPaths(12);
 
@@ -40,19 +46,24 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function tempDir(): string {
+/** A new repository whose remote `origin` is at `origin`, the test project on gitlab.com when none is given. */
+function tempDir(origin: string = GITLAB_ORIGIN): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), "kerpeten-platform-")));
 
   dirs.push(dir);
 
-  return dir;
+  return originRepo(dir, origin === "no origin" ? undefined : origin);
 }
 
-/** The platform of a new run in `dir`, with a fake glab there that gives `answers`. */
-function platform(dir: string, answers: Readonly<Record<string, CliAnswer>>): Promise<TestGitLabPlatform> {
+/** The platform of a new run in `dir`, with a fake glab there that gives `answers`, and with the read budget `limits`. */
+function platform(
+  dir: string,
+  answers: Readonly<Record<string, CliAnswer>>,
+  limits: PlatformReadLimits = LIMITS,
+): Promise<TestGitLabPlatform> {
   return runComponent(
     TestGitLabPlatform,
-    { repo: dir, glabCommand: fakeGlab(dir, answers) },
+    { repo: dir, glabCommand: fakeGlab(dir, answers), glabLimits: limits },
     { components: COMPONENTS },
   );
 }
@@ -80,32 +91,33 @@ const NOT_FOUND: CliAnswer = {
   stdout: '{"message":"404 Not found"}',
 };
 
-const NO_REPOSITORY: CliAnswer = {
+const NO_SUCH_HOST: CliAnswer = {
   exitCode: 1,
   stderr: [
     "          ",
     "   ERROR  ",
     "          ",
-    "  unable to expand placeholder in path: none of the git remotes configured for this repository point to a known GitLab",
-    "  host. Please use `glab auth login` to authenticate and configure a new host for glab.",
-    "",
-    "  Configured remotes: github.com.",
+    '  Get "https://gitlab.com/api/v4/projects/acme%2Fshop/merge_requests/12": dial tcp: lookup                       ',
+    "  gitlab.com: no such host.                                                                               ",
     "",
   ].join("\n"),
 };
 
 const NOT_FOUND_MESSAGE =
-  "merge request 12 was not found in the GitLab project of this folder: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in (`glab auth login`) with an account that can read the project";
+  "merge request 12 was not found in gitlab.com/acme/shop, the project of the origin remote: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in to gitlab.com (`glab auth login --hostname gitlab.com`) with an account that can read the project; a merge request of another project, such as the one a fork was made from, is not read";
 
 const SIGNED_OUT_MESSAGE =
-  "GitLab did not accept the sign-in of glab (HTTP 401): run `glab auth login`, or correct the token in GITLAB_TOKEN when that variable is set, and run again";
+  "GitLab at gitlab.com did not accept the sign-in of glab (HTTP 401): run `glab auth login --hostname gitlab.com`, or correct the token in GITLAB_TOKEN when that variable is set, and run again";
 
-const NO_REPOSITORY_MESSAGE =
-  "glab finds no GitLab project in this folder: run inside a clone whose remote is on GitLab; for a GitLab host of your own, sign glab in to it first with `glab auth login --hostname <host>`";
+const general = { kind: "general", file: null, lines: null, side: null, commit: null } as const;
 
-const general = { kind: "general", file: null, lines: null, commit: null } as const;
-
-const onLine = { kind: "line", file: "src/a.ts", commit: SHA_A, createdAt: "2026-11-20T10:00:00.000Z" } as const;
+const onLine = {
+  kind: "line",
+  file: "src/a.ts",
+  side: "new",
+  commit: SHA_A,
+  createdAt: "2026-11-20T10:00:00.000Z",
+} as const;
 
 describe("GitLab platform: the merge request", () => {
   test("asks glab for the merge request with one GET in the run's repository and gives it in the platform's words", async () => {
@@ -125,7 +137,7 @@ describe("GitLab platform: the merge request", () => {
       baseRef: "main",
     });
 
-    expect(glabCalls(dir)).toEqual([[...READ, "projects/:fullpath/merge_requests/12"]]);
+    expect(glabCalls(dir)).toEqual([[...READ, "projects/acme%2Fshop/merge_requests/12"]]);
     expect(cliDirs(dir, "glab")).toEqual([dir]);
   });
 
@@ -198,15 +210,20 @@ describe("GitLab platform: the merge request", () => {
         SIGNED_OUT_MESSAGE,
       ],
       [NOT_FOUND, "not_found", NOT_FOUND_MESSAGE],
-      [NO_REPOSITORY, "no_repository", NO_REPOSITORY_MESSAGE],
       [
         {
           exitCode: 1,
           stderr:
-            "\n   ERROR  \n\n  unable to expand placeholder in path: not a git repository: fatal: not a git repository\n",
+            '! GITLAB_TOKEN is set, but "gitlab.com" is neither the default host nor a configured host, so glab did not send the credential to it. To authenticate to this host, run glab auth login --hostname gitlab.com.\nglab: 404 Project Not Found (HTTP 404)\n',
+          stdout: '{"message":"404 Project Not Found"}',
         },
-        "no_repository",
-        NO_REPOSITORY_MESSAGE,
+        "not_found",
+        NOT_FOUND_MESSAGE,
+      ],
+      [
+        NO_SUCH_HOST,
+        "failed",
+        'glab api failed (exit 1): Get "https://gitlab.com/api/v4/projects/acme%2Fshop/merge_requests/12": dial tcp: lookup gitlab.com: no such host.',
       ],
       [
         { exitCode: 1, stderr: "glab: 502 Bad Gateway (HTTP 502)\n" },
@@ -233,7 +250,7 @@ describe("GitLab platform: the merge request", () => {
 
     const gitlab = await runComponent(
       TestGitLabPlatform,
-      { repo: dir, glabCommand: join(dir, "no-glab-here") },
+      { repo: dir, glabCommand: join(dir, "no-glab-here"), glabLimits: LIMITS },
       { components: COMPONENTS },
     );
 
@@ -405,17 +422,17 @@ describe("GitLab platform: the comments", () => {
         { ...comment, id: "302", lines: { start: 4, end: 9 } },
         { ...comment, id: "303", lines: { start: 35, end: 35 } },
         { ...comment, id: "304", lines: { start: 230, end: 233 } },
-        { ...comment, id: "305", lines: null },
-        { ...comment, id: "306", lines: null },
+        { ...comment, id: "305", lines: null, side: null },
+        { ...comment, id: "306", lines: null, side: null },
         { ...comment, id: "307", lines: { start: 7, end: 7 }, commit: SHA_C },
-        { ...comment, id: "308", lines: null },
+        { ...comment, id: "308", lines: null, side: null },
       ],
       complete: true,
       problems: [],
     });
   });
 
-  test("a note on a removed line names the file and the line before the change, at the base commit", async () => {
+  test("a note on a removed line is on the old side: the line before the change, the file by its new path, the head commit", async () => {
     const removed = position({ old_path: "src/old.ts", new_path: "src/a.ts", old_line: 5, new_line: null });
 
     const range = {
@@ -441,7 +458,7 @@ describe("GitLab platform: the comments", () => {
       ),
     );
 
-    const comment = { ...onLine, file: "src/old.ts", commit: SHA_B, author: "ada", body: "y can be 0", replyTo: null };
+    const comment = { ...onLine, side: "old", author: "ada", body: "y can be 0", replyTo: null } as const;
 
     expect(read).toEqual({
       comments: [
@@ -449,7 +466,7 @@ describe("GitLab platform: the comments", () => {
         { ...comment, id: "402", lines: { start: 5, end: 5 }, author: "bob", body: "it was dead code", replyTo: "401" },
         { ...comment, id: "403", lines: { start: 3, end: 5 } },
         { ...comment, id: "404", lines: { start: 5, end: 5 } },
-        { ...comment, id: "405", lines: { start: 5, end: 5 } },
+        { ...comment, id: "405", lines: { start: 5, end: 5 }, file: "src/old.ts" },
       ],
       complete: true,
       problems: [],
@@ -552,17 +569,231 @@ describe("GitLab platform: the comments", () => {
     expect(read.problems).toEqual([`${DISCUSSIONS}: 5 of 7 entries cannot be read`]);
   });
 
-  test("a sign-in GitLab does not accept, an unknown merge request and a folder without a project are errors, not an incomplete result", async () => {
+  test("a sign-in GitLab does not accept and an unknown merge request are errors, not an incomplete result", async () => {
     const cases: [CliAnswer, PlatformFailure][] = [
       [{ exitCode: 1, stderr: "glab: 401 Unauthorized (HTTP 401)\n" }, "signed_out"],
       [NOT_FOUND, "not_found"],
-      [NO_REPOSITORY, "no_repository"],
     ];
 
     for (const [answer, kind] of cases) {
       const gitlab = await platform(tempDir(), { [paths.discussions]: answer });
 
       expect((await failure(gitlab.comments(12))).kind).toBe(kind);
+    }
+  });
+});
+
+describe("GitLab platform: the project of the origin remote", () => {
+  test("every call names the host and the full path of the project of the origin remote, as one encoded segment", async () => {
+    const origins: [string, string, string][] = [
+      ["https://gitlab.com/acme/shop.git", "gitlab.com", "acme/shop"],
+      ["ssh://git@gitlab.com:2222/acme/shop.git", "gitlab.com", "acme/shop"],
+      ["https::https://gitlab.com/acme/shop.git", "gitlab.com", "acme/shop"],
+      ["git@Git.Example.com:Acme/Group/Sub-Group/shop.v2.git", "git.example.com", "Acme/Group/Sub-Group/shop.v2"],
+    ];
+
+    for (const [origin, host, project] of origins) {
+      const dir = tempDir(origin);
+      const asked = glabPaths(12, project);
+
+      const gitlab = await platform(dir, {
+        [asked.mergeRequest]: {
+          stdout: mergeRequestJson({ webUrl: `https://${host}/${project}/-/merge_requests/12` }),
+        },
+        [asked.discussions]: { stdout: "" },
+      });
+
+      expect((await gitlab.mergeRequest(12)).number).toBe(12);
+      expect((await gitlab.comments(12)).complete).toBe(true);
+
+      const read = ["api", "--method", "GET", "--output", "ndjson", "--hostname", host];
+      const segment = project.replaceAll("/", "%2F");
+
+      expect(glabCalls(dir)).toEqual([
+        [...read, `projects/${segment}/merge_requests/12`],
+        [...read, "--paginate", `projects/${segment}/merge_requests/12/discussions?per_page=100`],
+      ]);
+    }
+  });
+
+  test("another remote plays no part: glab is left nothing to choose", async () => {
+    const dir = tempDir();
+
+    sh(dir, ["remote", "add", "upstream", "https://gitlab.com/other/shop.git"]);
+    sh(dir, ["config", "remote.upstream.glab-resolved", "base"]);
+
+    const gitlab = await platform(dir, { [paths.mergeRequest]: { stdout: mergeRequestJson() } });
+
+    await gitlab.mergeRequest(12);
+
+    expect(glabCalls(dir)).toEqual([[...READ, "projects/acme%2Fshop/merge_requests/12"]]);
+    expect(glabCalls(dir).flat().join(" ")).not.toMatch(/:fullpath|other/);
+  });
+
+  test("an answer of another project is a platform error; the old form of web_url and another case are the same project", async () => {
+    const other = await platform(tempDir(), {
+      [paths.mergeRequest]: {
+        stdout: mergeRequestJson({ webUrl: "https://gitlab.com/other/shop/-/merge_requests/12" }),
+      },
+    });
+
+    const error = await failure(other.mergeRequest(12));
+
+    expect({ kind: error.kind, message: error.message }).toEqual({
+      kind: "failed",
+      message:
+        'glab answered with a merge request of "other/shop", not of acme/shop, the project of the origin remote; when the project was renamed or moved, point the origin remote at its new address and run again',
+    });
+
+    for (const webUrl of [
+      "https://gitlab.com/acme/shop/merge_requests/12",
+      "https://gitlab.com/Acme/Shop/-/merge_requests/12",
+      "https://gitlab.com/acme/shop/-/merge_requests/12/",
+    ]) {
+      const same = await platform(tempDir(), { [paths.mergeRequest]: { stdout: mergeRequestJson({ webUrl }) } });
+
+      expect((await same.mergeRequest(12)).number).toBe(12);
+    }
+
+    const noProject = await platform(tempDir(), {
+      [paths.mergeRequest]: { stdout: mergeRequestJson({ webUrl: "https://gitlab.com/dashboard" }) },
+    });
+
+    expect((await failure(noProject.mergeRequest(12))).message).toBe(
+      "the answer of glab for merge request 12 cannot be read: web_url names no project",
+    );
+  });
+
+  test("a repository without an origin remote, and an origin that names no project on GitLab, stop before glab is called", async () => {
+    const cases: [string, string][] = [
+      ["no origin", "this repository has no origin remote: "],
+      ["../shop.git", "the origin remote is a path on this machine: "],
+      [
+        "https://gitlab.com/shop.git",
+        "the origin remote names gitlab.com/shop, which is no GitLab project: a project is a namespace and a name, <namespace>/<name>",
+      ],
+    ];
+
+    for (const [origin, message] of cases) {
+      const dir = tempDir(origin);
+      const gitlab = await platform(dir, {});
+
+      for (const read of [gitlab.mergeRequest(12), gitlab.comments(12)]) {
+        const error = await failure(read);
+
+        expect(error.kind).toBe("no_repository");
+        expect(error.message).toStartWith(message);
+      }
+
+      expect(glabCalls(dir)).toEqual([]);
+    }
+  });
+
+  test("nothing of a remote adds an argument, a second endpoint or a query to a call of glab", async () => {
+    const refused = [
+      "git@gitlab.com:acme/shop --method DELETE",
+      "https://gitlab.com/acme/shop?per_page=1",
+      "git@gitlab.com:acme/shop/../../users",
+      "https://gitlab.com/acme/shop%2F..%2F..%2Fusers",
+      "git@gitlab.com::fullpath/x",
+      "git@gitlab.com:acme/:id",
+      "git@--hostname=evil.example:acme/shop",
+    ];
+
+    for (const origin of refused) {
+      const dir = tempDir(origin);
+      const gitlab = await platform(dir, {});
+
+      expect((await failure(gitlab.mergeRequest(12))).kind).toBe("no_repository");
+      expect((await failure(gitlab.comments(12))).kind).toBe("no_repository");
+      expect(glabCalls(dir)).toEqual([]);
+    }
+
+    const dir = tempDir("git@gitlab.com:--method/-XDELETE/merge_requests.git");
+    const gitlab = await platform(dir, {});
+
+    expect((await failure(gitlab.mergeRequest(12))).kind).toBe("failed");
+    expect(glabCalls(dir)).toEqual([[...READ, "projects/--method%2F-XDELETE%2Fmerge_requests/merge_requests/12"]]);
+  });
+
+  test("a sign-in that is not accepted names the host of the origin remote", async () => {
+    const dir = tempDir("https://git.example.com/acme/shop.git");
+
+    const gitlab = await platform(dir, {
+      [paths.mergeRequest]: { exitCode: 1, stderr: "glab: 401 Unauthorized (HTTP 401)\n" },
+    });
+
+    expect((await failure(gitlab.mergeRequest(12))).message).toBe(
+      "GitLab at git.example.com did not accept the sign-in of glab (HTTP 401): run `glab auth login --hostname git.example.com`, or correct the token in GITLAB_TOKEN when that variable is set, and run again",
+    );
+  });
+});
+
+describe("GitLab platform: the budget of a read", () => {
+  const twoLines = jsonLines(discussion("d1", note(601)), discussion("d2", note(602)));
+  const threeLines = `${twoLines}${jsonLines(discussion("d3", note(603)))}`;
+
+  test("discussions larger than the byte limit stop there: the entries that stand whole are kept and the result is incomplete", async () => {
+    const bytes = twoLines.length + 5;
+    const gitlab = await platform(tempDir(), { [paths.discussions]: { stdout: threeLines } }, { ...LIMITS, bytes });
+    const read = await gitlab.comments(12);
+
+    expect(read.comments.map((comment) => comment.id)).toEqual(["601", "602"]);
+    expect(read.complete).toBe(false);
+
+    expect(read.problems).toEqual([
+      `${DISCUSSIONS}: glab printed more than ${bytes} bytes, and the read stopped there`,
+    ]);
+  });
+
+  test("discussions of exactly the byte limit are whole", async () => {
+    const gitlab = await platform(
+      tempDir(),
+      { [paths.discussions]: { stdout: threeLines } },
+      { ...LIMITS, bytes: threeLines.length },
+    );
+
+    expect(await gitlab.comments(12)).toMatchObject({ complete: true, problems: [] });
+  });
+
+  test("discussions glab does not finish within the time limit stop there, with the entries it printed, and say so", async () => {
+    const gitlab = await platform(
+      tempDir(),
+      { [paths.discussions]: { stdout: twoLines, hangs: true } },
+      { ...LIMITS, ms: 300 },
+    );
+
+    const started = Date.now();
+    const read = await gitlab.comments(12);
+
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(read.comments.map((comment) => comment.id)).toEqual(["601", "602"]);
+    expect(read.complete).toBe(false);
+
+    expect(read.problems).toEqual([
+      `${DISCUSSIONS}: glab did not finish within 0.3 seconds, and the read stopped there`,
+    ]);
+  });
+
+  test("a merge request read that reaches a limit is a platform error that names the limit", async () => {
+    const cases: [CliAnswer, PlatformReadLimits, string][] = [
+      [
+        { stdout: mergeRequestJson(), hangs: true },
+        { ...LIMITS, ms: 300 },
+        "merge request 12 was not read: glab did not finish within 0.3 seconds, and the read stopped there",
+      ],
+      [
+        { stdout: mergeRequestJson() },
+        { ...LIMITS, bytes: 100 },
+        "merge request 12 was not read: glab printed more than 100 bytes, and the read stopped there",
+      ],
+    ];
+
+    for (const [answer, limits, message] of cases) {
+      const gitlab = await platform(tempDir(), { [paths.mergeRequest]: answer }, limits);
+      const error = await failure(gitlab.mergeRequest(12));
+
+      expect({ kind: error.kind, message: error.message }).toEqual({ kind: "failed", message });
     }
   });
 });
@@ -591,7 +822,7 @@ describe("GitLab platform: the environment of glab", () => {
 
       const run = new Run(
         { group: PermissionGroupSet.ALL, every: true },
-        { values: { repo: dir, glabCommand }, container: app.container, test: true },
+        { values: { repo: dir, glabCommand, glabLimits: LIMITS }, container: app.container, test: true },
       );
 
       await (await run.ready(TestGitLabPlatform)).mergeRequest(12);

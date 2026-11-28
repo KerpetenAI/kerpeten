@@ -38,7 +38,6 @@ export const gitlabPositionSchema = z
     new_line: line,
     old_line: line,
     head_sha: sha,
-    base_sha: sha,
     line_range: z.object({ start: rangeEnd, end: rangeEnd }).nullish(),
   })
   .refine((position) => (position.new_path ?? position.old_path ?? undefined) !== undefined, "names no file");

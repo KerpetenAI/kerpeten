@@ -11,8 +11,9 @@ import type { ReviewedMergeRequest, ReviewInput } from "../types/review-workflow
  * Reads the merge request a review is of from its platform, as the first flow step: before git is read for the change
  * and before any model is called, so a merge request that cannot be read costs nothing. The platform is the one the
  * run's platform choice gives, GitHub or GitLab; it is chosen before the platform's tool runs, and a repository whose
- * platform cannot be told stops the review. A review of no merge request adds none and chooses no platform. The tenant
- * is the one `KERPETEN_TENANT` names, `default` when it names none.
+ * platform cannot be told stops the review. The merge request is the one of the project the `origin` remote names; a
+ * repository without such a remote stops the review too. A review of no merge request adds none and chooses no
+ * platform. The tenant is the one `KERPETEN_TENANT` names, `default` when it names none.
  *
  * A read that fails ends the review as a wrong input when the user can put it right, and as a platform error when the
  * platform failed; `mergeRequestReadError` says which is which.
