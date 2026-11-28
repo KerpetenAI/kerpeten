@@ -122,6 +122,6 @@ export const configSchema = z.strictObject({
   comment_language: z
     .string()
     .regex(/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/)
-    .default("tr"),
+    .default("en"),
   openrouter: z.strictObject({ zdr: z.boolean().default(true) }).prefault({}),
 });

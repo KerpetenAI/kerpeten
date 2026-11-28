@@ -7,22 +7,35 @@ Kerpeten is published to npm as four packages with one version:
 
 The version is the `version` in `package.json`. That file stays `private`; the published manifests are generated into `dist/npm/`.
 
+Nobody writes the version by hand. [Changesets](https://changesets.dev) raises it from the changeset files that pull requests add, and the `release` workflow publishes it.
+
 ## A release
 
-1. Set the new `version` in `package.json` in a pull request and merge it.
-2. Tag the merge commit `v<version>`, for example `v0.2.0`, and push the tag.
-3. The `release` workflow runs the same jobs as every pull request: the checks, the four tarballs, and an install of those tarballs with npm on Linux x64, Linux arm64 and macOS arm64. Then it publishes the same tarballs: the platform packages first, `kerpeten` last. It stops when the tag is not the version in `package.json`. A package version that is already on npm is skipped, so a failed run can be started again.
+1. **Pull requests add changesets.** A pull request that changes what a user gets adds a file under `.changeset/` that says `patch`, `minor` or `major` and describes the change in a sentence or two. [.changeset/README.md](.changeset/README.md) shows the file.
+2. **The version pull request opens by itself.** After every merge to `master`, the `release` workflow looks for changeset files. When there are some, it opens a pull request named `chore: version packages`, or updates the open one. That pull request raises the `version` in `package.json` by the largest bump among the files, moves their texts into `CHANGELOG.md` and removes the files.
+3. **Merging it releases.** Merge the version pull request when the version should go out. The `release` workflow then runs the same jobs as every pull request: the checks, the four tarballs, and an install of those tarballs with npm on Linux x64, Linux arm64 and macOS arm64. It publishes the same tarballs, the platform packages first and `kerpeten` last, and creates the GitHub release `v<version>` with the section of `CHANGELOG.md` as its text.
 
-The workflow has no npm token. It publishes through npm trusted publishing, which works only for a package that already exists on npm and names this repository and `release.yml` as its trusted publisher. So the first version is published by hand.
+Good to know:
 
-## The first version, once
+- The workflow publishes whenever the version in `package.json` is not on npm yet. A package version that is already on npm is skipped, so a failed run can be started again, and a merge without a new version publishes nothing.
+- The version pull request is opened by GitHub Actions, and GitHub starts no checks on such a pull request. The checks run on `master` right after the merge, before anything is published.
+- npm shows a new version a few minutes after it is published. An install right after a release can still fail with `No matching version found`.
+- The README badge of the version reads npm, so it follows by itself.
 
-Publish the tarballs that CI built and ran on all three platforms, not ones built on your machine.
+## Trusted publishing
 
-1. Find the `ci` run of the commit to release on `master` and download its tarballs:
+The workflow has no npm token. It publishes through npm trusted publishing, which works only for a package that already exists on npm and names this repository and `release.yml` as its trusted publisher. All four packages exist since 0.1.0, which was published by hand.
+
+On npmjs.com, open the settings of each of the four packages and add a trusted publisher: GitHub Actions, organization `KerpetenSH`, repository `kerpeten`, workflow `release.yml`. Do this shortly before a release: npm drops a new trusted publisher that has not published within 2 days.
+
+## By hand, when the workflow cannot publish
+
+Publish the tarballs that the workflow built and ran on all three platforms, not ones built on your machine.
+
+1. Find the `release` run of the commit to release on `master` and download its tarballs:
 
    ```sh
-   gh run list --workflow ci --branch master --limit 1
+   gh run list --workflow release --branch master --limit 1
    gh run download <run-id> --name npm-tarballs --dir tarballs
    ```
 
@@ -33,5 +46,3 @@ Publish the tarballs that CI built and ran on all three platforms, not ones buil
    cd tarballs
    for tarball in kerpetensh-kerpeten-*.tgz kerpeten-*.tgz; do npm publish "$tarball" --access public; done
    ```
-
-4. On npmjs.com, open the settings of each of the four packages and add a trusted publisher: GitHub Actions, organization `KerpetenSH`, repository `kerpeten`, workflow `release.yml`. Do this shortly before the next release: npm drops a new trusted publisher that has not published within 2 days.

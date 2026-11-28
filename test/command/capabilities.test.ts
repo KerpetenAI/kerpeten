@@ -27,10 +27,12 @@ describe("capabilities", () => {
     expect(code).toBe(ExitCode.OK);
 
     expect(out.filter((line) => !line.startsWith(" "))).toEqual([
+      "answer-reader",
       "chatgpt-auth-file",
       "chatgpt-oauth",
       "chatgpt-sign-in",
       "config-file",
+      "config-file-writer (permission: config:write)",
       "context-pack-file",
       "extra-context-file",
       "git",
@@ -63,14 +65,16 @@ describe("capabilities", () => {
     );
   });
 
-  test("the repository capabilities declare their permissions and the others declare none", async () => {
+  test("the repository capabilities and the config file writer declare their permissions and the others declare none", async () => {
     const permissions = Object.fromEntries((await registered()).map((spec) => [spec.name, spec.permission]));
 
     expect(permissions).toEqual({
+      "answer-reader": undefined,
       "chatgpt-auth-file": undefined,
       "chatgpt-oauth": undefined,
       "chatgpt-sign-in": undefined,
       "config-file": undefined,
+      "config-file-writer": "config:write",
       "context-pack-file": undefined,
       "extra-context-file": undefined,
       git: undefined,
@@ -87,7 +91,7 @@ describe("capabilities", () => {
       .filter((path) => !path.startsWith("src/harness-kit/"))
       .filter((path) => /^@Capability\(/m.test(readFileSync(join(root, path), "utf8")));
 
-    expect(marked.length).toBe(12);
+    expect(marked.length).toBe(14);
     expect((await registered()).length).toBe(marked.length);
   });
 });

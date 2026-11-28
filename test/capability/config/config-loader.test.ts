@@ -57,7 +57,7 @@ describe("config", () => {
     });
 
     expect(config.ignore).toEqual(["**/*.lock", "**/generated/**"]);
-    expect(config.comment_language).toBe("tr");
+    expect(config.comment_language).toBe("en");
     expect(config.openrouter).toEqual({ zdr: true });
   });
 
@@ -274,7 +274,7 @@ describe("config_hash", () => {
     const reordered = `models:\n  judge: { model: some/model, provider: openrouter }\n  reviewer: { api_key_env: KIMI_API_KEY, base_url: "https://api.kimi.com/coding/v1", model: k3.1-pro, provider: anthropic }\n`;
 
     expect(ok(reordered).hash).toBe(base);
-    expect(ok(`${MODELS}thresholds: { inline: 60 }\ncomment_language: tr\n`).hash).toBe(base);
+    expect(ok(`${MODELS}thresholds: { inline: 60 }\ncomment_language: en\n`).hash).toBe(base);
   });
 
   test("changes when a value changes", () => {
