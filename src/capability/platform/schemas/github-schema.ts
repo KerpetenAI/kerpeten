@@ -8,6 +8,8 @@ const line = z.int().positive().nullish();
 
 const user = z.object({ login: z.string() }).nullish();
 
+const side = z.enum(["LEFT", "RIGHT"]);
+
 /** The fields of `GET /repos/{owner}/{repo}/pulls/{number}` the review reads. */
 export const githubPullRequestSchema = z.object({
   html_url: z.string(),
@@ -20,12 +22,20 @@ export const githubPullRequestSchema = z.object({
   base: z.object({ sha, ref: z.string(), repo: z.object({ id }) }),
 });
 
-/** A review comment of a pull request: a comment on lines of a file. A reply names the comment it answers. */
+/**
+ * A review comment of a pull request: a comment on lines of a file. A reply names the comment it answers. `side` is
+ * the side of the diff its last line is on, `LEFT` for the file before the change, and `start_side` the side of the
+ * first line of a comment on more than one line. The line numbers count in the file of their side. A comment on a
+ * whole file has the `subject_type` `file` and still names line 1.
+ */
 export const githubReviewCommentSchema = z.object({
   id,
   user,
   body: z.string(),
   path: z.string(),
+  subject_type: z.string().nullish(),
+  side,
+  start_side: side.nullish(),
   line,
   start_line: line,
   original_line: line,

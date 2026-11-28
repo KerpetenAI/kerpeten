@@ -5,7 +5,8 @@ import type { ReviewFlagStep } from "./ReviewFlagStep.ts";
 
 /**
  * Gets the review ready before any model is called; each problem is one line, and then the command ends with 2. What
- * it adds is what the local review workflow, the next in the chain, takes as its input.
+ * it adds is what the local review workflow, the next in the chain, takes as its input. The log line of the start
+ * names the mode of the review: `merge-request` for a review started with `--mr`, `local-branch` without it.
  */
 @FlowStep({
   name: "review-setup",
@@ -13,6 +14,10 @@ import type { ReviewFlagStep } from "./ReviewFlagStep.ts";
     "Finds the repository, loads its configuration, checks the model keys and builds both model clients; each problem the user can fix ends the review before any model call.",
 })
 export class ReviewSetupStep extends FlowStepBase {
+  public static readonly LOCAL_BRANCH_MODE = "local-branch";
+
+  public static readonly MERGE_REQUEST_MODE = "merge-request";
+
   @Inject(ReviewSetup)
   private readonly setup!: ReviewSetup;
 
@@ -29,7 +34,7 @@ export class ReviewSetupStep extends FlowStepBase {
     const { reviewer, judge } = config.models;
 
     state.log.info("review started", {
-      mode: "local-branch",
+      mode: state.mr === undefined ? ReviewSetupStep.LOCAL_BRANCH_MODE : ReviewSetupStep.MERGE_REQUEST_MODE,
       provider: reviewer.provider,
       model: reviewer.model,
       base_url: reviewer.provider === "chatgpt" ? undefined : reviewer.base_url,

@@ -23,7 +23,8 @@ export function ghPaths(number: number): GhPaths {
 /**
  * Writes a script named `gh` into `dir` and returns its path. It appends the arguments of every call to `calls.txt`
  * and its working directory to `cwd.txt`, runs `before`, and answers by its last argument, the path, from `answers`;
- * a path it has no answer for ends with 97. It uses only what the shell has built in, so it needs no PATH.
+ * a path it has no answer for ends with 97. It uses only what the shell has built in, so it needs no PATH; an answer
+ * that hangs runs `/bin/sleep`.
  */
 export function fakeGh(dir: string, answers: Readonly<Record<string, GhAnswer>>, before = ""): string {
   const cases = Object.entries(answers).map(([path, answer]) =>
@@ -31,6 +32,7 @@ export function fakeGh(dir: string, answers: Readonly<Record<string, GhAnswer>>,
       `  ${quoted(path)})`,
       `    printf '%s' ${quoted(answer.stdout ?? "")}`,
       `    printf '%s' ${quoted(answer.stderr ?? "")} >&2`,
+      ...(answer.hangs === true ? ["    exec /bin/sleep 30"] : []),
       `    exit ${answer.exitCode ?? 0} ;;`,
     ].join("\n"),
   );

@@ -2,15 +2,11 @@ import { Inject } from "@asenajs/ioc";
 import type { z } from "zod";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
-import {
-  Capability,
-  ProcessCapability,
-  type ProcessResult,
-  type ProcessSettings,
-  RunValue,
-} from "../../harness-kit/index.ts";
-import { errorMessage, terminalLine } from "../../text/text-utils.ts";
+import { Capability, ProcessCapability, type ProcessSettings, RunValue } from "../../harness-kit/index.ts";
+import { terminalLine } from "../../text/text-utils.ts";
+import { LimitedOutput } from "./LimitedOutput.ts";
 import { PlatformError } from "./PlatformError.ts";
+import { PlatformLimits } from "./PlatformLimits.ts";
 import { SlurpedPages } from "./SlurpedPages.ts";
 import {
   githubIssueCommentSchema,
@@ -25,7 +21,17 @@ import type {
   GitHubReview,
   GitHubReviewComment,
 } from "./types/github.ts";
-import type { MergeRequest, Platform, PlatformComment, PlatformComments } from "./types/platform.ts";
+import type {
+  MergeRequest,
+  Platform,
+  PlatformComment,
+  PlatformComments,
+  PlatformExit,
+  PlatformRead,
+  PlatformReadLimits,
+  PlatformSide,
+  PlatformStop,
+} from "./types/platform.ts";
 
 /**
  * GitHub behind the `Platform` interface: reads a pull request and its comments with `gh api` in the run's repository,
@@ -38,6 +44,10 @@ import type { MergeRequest, Platform, PlatformComment, PlatformComments } from "
  *
  * gh gets the program's environment without the variables that force colors, which would put color codes into the
  * JSON it prints.
+ *
+ * Every read has a budget, `PlatformLimits`: the bytes gh may print and the time it may take. A read that reaches
+ * either is stopped. For the pull request that is an error; for a list of comments the result is incomplete and says
+ * which limit stopped it.
  */
 @Capability({
   name: "github-platform",
@@ -60,6 +70,12 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
 
   private static readonly COLOR_FORCING: readonly string[] = ["CLICOLOR_FORCE", "GH_FORCE_TTY"];
 
+  private static readonly SIDES: Readonly<Record<"LEFT" | "RIGHT", PlatformSide>> = { LEFT: "old", RIGHT: "new" };
+
+  private static readonly WHOLE_FILE = "file";
+
+  private static readonly MS_PER_SECOND = 1000;
+
   @Inject(Names.ENV)
   private readonly env!: Instances[Names.ENV];
 
@@ -72,7 +88,7 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
     }
   }
 
-  private static failure(result: ProcessResult, number: number): PlatformError {
+  private static failure(result: PlatformExit, number: number): PlatformError {
     const stderr = terminalLine(result.stderr);
 
     if (result.exitCode === GitHubPlatform.NOT_SIGNED_IN_EXIT) {
@@ -117,10 +133,25 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
     return url.host.toLowerCase();
   }
 
+  /** What a read that was stopped at a limit says, after the name of what was read. */
+  private static stopped(read: PlatformStop): string {
+    if (read.kind === "too_large") return `gh printed more than ${read.bytes} bytes, and the read stopped there`;
+
+    return `gh did not finish within ${read.ms / GitHubPlatform.MS_PER_SECOND} seconds, and the read stopped there`;
+  }
+
+  /**
+   * A review comment in the platform's words. Its lines are the ones gh gives for the pull request as it is now, and
+   * the ones the comment was written on when it is outdated; `commit` is the head commit of that state. The lines
+   * count on the side of the comment's last line. A comment whose first line is on the other side gives its last
+   * line alone. A comment on a whole file has no lines and no side, whatever line gh names for it.
+   */
   private static lineComment(comment: GitHubReviewComment): PlatformComment {
     const current = comment.line ?? undefined;
     const end = current ?? comment.original_line ?? undefined;
     const first = current === undefined ? comment.original_start_line : comment.start_line;
+    const onLines = comment.subject_type !== GitHubPlatform.WHOLE_FILE && end !== undefined;
+    const oneSide = (comment.start_side ?? comment.side) === comment.side;
 
     return {
       id: String(comment.id),
@@ -128,7 +159,8 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
       author: comment.user?.login ?? null,
       body: comment.body,
       file: comment.path,
-      lines: end === undefined ? null : { start: first ?? end, end },
+      lines: onLines ? { start: oneSide ? (first ?? end) : end, end } : null,
+      side: onLines ? GitHubPlatform.SIDES[comment.side] : null,
       commit: current === undefined ? comment.original_commit_id : comment.commit_id,
       replyTo: comment.in_reply_to_id === undefined ? null : String(comment.in_reply_to_id),
       createdAt: comment.created_at,
@@ -143,6 +175,7 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
       body: comment.body,
       file: null,
       lines: null,
+      side: null,
       commit: null,
       replyTo: null,
       createdAt: comment.created_at,
@@ -157,6 +190,7 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
       body,
       file: null,
       lines: null,
+      side: null,
       commit: review.commit_id ?? null,
       replyTo: null,
       createdAt: review.submitted_at ?? null,
@@ -171,6 +205,10 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
     GitHubPlatform.assertNumber(number);
 
     const result = await this.get([`repos/{owner}/{repo}/pulls/${number}`]);
+
+    if (result.kind !== "exited") {
+      throw new PlatformError("failed", `pull request ${number} was not read: ${GitHubPlatform.stopped(result)}`);
+    }
 
     if (result.exitCode !== 0) throw GitHubPlatform.failure(result, number);
 
@@ -212,7 +250,8 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
    * The comments of pull request `number`: the comments on lines, then the bodies of the reviews, which are general
    * comments, then the comments of the conversation. Each of the three lists is read to its last page. A list
    * that gh did not read to its end, or whose entries cannot all be read, makes the result incomplete: it holds what
-   * was read, and `problems` names the list. A missing gh, a missing sign-in, an unknown pull request and a folder
+   * was read, and `problems` names the list. So does a list that is larger than the byte limit of a read or takes
+   * longer than its time limit: the entries of the pages that stand whole before the stop are kept. A missing gh, a missing sign-in, an unknown pull request and a folder
    * without a GitHub repository throw a `PlatformError`, because then nothing can be read.
    */
   public async comments(number: number): Promise<PlatformComments> {
@@ -264,26 +303,45 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
     return env;
   }
 
-  private async get(args: readonly string[]): Promise<ProcessResult> {
-    try {
-      return await this.collect([...GitHubPlatform.READ, ...args]);
-    } catch (error) {
-      const reason = terminalLine(errorMessage(error));
+  /** The budget of one read of gh. */
+  protected readLimits(): PlatformReadLimits {
+    return { bytes: PlatformLimits.READ_BYTES, ms: PlatformLimits.READ_MS };
+  }
 
-      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
-        throw new PlatformError("failed", `gh cannot be run: ${reason}`);
+  /**
+   * Runs one GET of gh inside the budget of a read and gives what it printed and how it ended. A gh that cannot be
+   * started throws a `PlatformError`.
+   */
+  private async get(args: readonly string[]): Promise<PlatformRead> {
+    const { bytes, ms } = this.readLimits();
+    const output = new LimitedOutput(bytes);
+    const outcome = await this.stream([...GitHubPlatform.READ, ...args], (chunk) => output.take(chunk), ms);
+
+    switch (outcome.kind) {
+      case "not_started": {
+        const reason = terminalLine(outcome.error);
+
+        if (outcome.code !== "ENOENT") throw new PlatformError("failed", `gh cannot be run: ${reason}`);
+
+        throw new PlatformError(
+          "cli_missing",
+          `gh, the GitHub CLI, is not found (${reason}): install it from https://cli.github.com and run again`,
+        );
       }
-
-      throw new PlatformError(
-        "cli_missing",
-        `gh, the GitHub CLI, is not found (${reason}): install it from https://cli.github.com and run again`,
-      );
+      case "timed_out":
+        return { kind: "timed_out", stdout: output.bytes, ms };
+      case "stopped":
+        return { kind: "too_large", stdout: output.bytes, bytes };
+      case "exited":
+        return { kind: "exited", exitCode: outcome.exitCode, stdout: output.bytes, stderr: outcome.stderr };
     }
   }
 
   private async list<T>(path: string, number: number, schema: z.ZodType<T>): Promise<GitHubList<T>> {
     const result = await this.get([...GitHubPlatform.ALL_PAGES, `${path}?per_page=${GitHubPlatform.PAGE_SIZE}`]);
-    const failure = result.exitCode === 0 ? undefined : GitHubPlatform.failure(result, number);
+
+    const failure =
+      result.kind !== "exited" || result.exitCode === 0 ? undefined : GitHubPlatform.failure(result, number);
 
     if (failure !== undefined && failure.kind !== "failed") throw failure;
 
@@ -299,7 +357,8 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
 
     const unread = pages.items.length - items.length;
 
-    if (failure !== undefined) problems.push(`${path}: ${failure.message}`);
+    if (result.kind !== "exited") problems.push(`${path}: ${GitHubPlatform.stopped(result)}`);
+    else if (failure !== undefined) problems.push(`${path}: ${failure.message}`);
     else if (!pages.whole) problems.push(`${path}: the answer of gh is not the list of pages it should be`);
 
     if (unread > 0) problems.push(`${path}: ${unread} of ${pages.items.length} entries cannot be read`);

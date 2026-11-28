@@ -1,8 +1,12 @@
-/** What the fake gh does for one path: what it prints, what it writes to stderr and how it exits, 0 when left out. */
+/**
+ * What the fake gh does for one path: what it prints, what it writes to stderr and how it exits, 0 when left out.
+ * With `hangs` it does not exit after it printed: it stays for half a minute, as a tool that waits for an answer.
+ */
 export interface GhAnswer {
   readonly stdout?: string;
   readonly stderr?: string;
   readonly exitCode?: number;
+  readonly hangs?: boolean;
 }
 
 /** The paths `GitHubPlatform` asks gh for, for one pull request. */
