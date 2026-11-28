@@ -1,6 +1,6 @@
 import { type After, ExitCode, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
-import type { LocalReviewResult } from "../../../harnesses/review/types/review.ts";
 import { terminalLine } from "../../../text/text-utils.ts";
+import type { ReviewResult } from "../../review/types/review-workflow.ts";
 import { planStopMessage } from "../review-command-utils.ts";
 import type { ReviewSetupStep } from "./ReviewSetupStep.ts";
 
@@ -14,7 +14,7 @@ import type { ReviewSetupStep } from "./ReviewSetupStep.ts";
   description: "Logs the usage of the local review and reports a stopped, failed or partial review.",
 })
 export class ReviewOutcomeStep extends FlowStepBase {
-  public execute(state: After<typeof ReviewSetupStep> & LocalReviewResult) {
+  public execute(state: After<typeof ReviewSetupStep> & ReviewResult) {
     const { plan, log } = state;
 
     for (const entry of state.usage) log.info("usage", { ...entry });

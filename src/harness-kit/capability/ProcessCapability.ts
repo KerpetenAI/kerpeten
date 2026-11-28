@@ -32,7 +32,9 @@ export abstract class ProcessCapability extends CapabilityBase {
     try {
       proc = this.spawn(args);
     } catch (error) {
-      return { kind: "not_started", error: errorMessage(error) };
+      const code = error instanceof Error && "code" in error && typeof error.code === "string" ? error.code : undefined;
+
+      return { kind: "not_started", error: errorMessage(error), ...(code === undefined ? {} : { code }) };
     }
 
     const stderr = new Response(proc.stderr).text();

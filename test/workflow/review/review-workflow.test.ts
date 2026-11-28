@@ -788,6 +788,7 @@ describe("local review", () => {
     expect(spec.description).toStartWith("Reviews the change between the base branch and HEAD");
 
     expect(spec.steps.map((step) => flowStepSpec(step).name)).toEqual([
+      "merge-request",
       "change",
       "reviewer",
       "candidates",

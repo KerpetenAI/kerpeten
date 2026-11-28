@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Capability, capabilitySpec } from "../../src/harness-kit/index.ts";
 import { LocalCapability } from "./LocalCapability.ts";
+import { MissingProgram } from "./MissingProgram.ts";
 import { SearchCapability } from "./SearchCapability.ts";
 
 describe("@Capability", () => {
@@ -34,5 +35,15 @@ describe("@Capability", () => {
     for (const permission of ["repo:read", "probe:run", "skills", "repo-files:read-only", "a1:b2"]) {
       expect(() => Capability({ name: "good", description: "", permission })).not.toThrow();
     }
+  });
+});
+
+describe("ProcessCapability", () => {
+  test("a streamed program that is not found gives the error text and the system's error code", async () => {
+    const outcome = await new MissingProgram().start();
+
+    expect(outcome.kind).toBe("not_started");
+    expect(outcome).toMatchObject({ kind: "not_started", code: "ENOENT" });
+    expect(outcome.kind === "not_started" && outcome.error).not.toBe("");
   });
 });

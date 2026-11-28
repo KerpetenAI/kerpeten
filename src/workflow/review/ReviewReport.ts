@@ -1,12 +1,11 @@
-import type { LocalReviewResult } from "../../harnesses/review/types/review.ts";
-import type { ReportBasis, ReportHead, ReviewOutcome } from "./types/review-workflow.ts";
+import type { ReportBasis, ReportHead, ReviewOutcome, ReviewResult } from "./types/review-workflow.ts";
 
 export class ReviewReport {
-  public static empty(basis: ReportBasis): LocalReviewResult {
+  public static empty(basis: ReportBasis): ReviewResult {
     return { ...ReviewReport.head(basis), findings: [], partial: false, usage: [], toolCalls: 0, judgeToolCalls: 0 };
   }
 
-  public static of(basis: ReportBasis, outcome: ReviewOutcome): LocalReviewResult {
+  public static of(basis: ReportBasis, outcome: ReviewOutcome): ReviewResult {
     const { review, candidates, judged, findings } = outcome;
 
     const partialReason = review.partialReason ?? judged?.partialReason;
@@ -28,8 +27,16 @@ export class ReviewReport {
   }
 
   private static head(basis: ReportBasis): ReportHead {
-    const { baseSha, headSha, changedFiles, promptVersion } = basis;
+    const { baseSha, headSha, changedFiles, promptVersion, mergeRequest } = basis;
 
-    return { baseSha, headSha, changedFiles, dropped: {}, clipped: 0, promptVersion };
+    return {
+      baseSha,
+      headSha,
+      changedFiles,
+      dropped: {},
+      clipped: 0,
+      promptVersion,
+      ...(mergeRequest === undefined ? {} : { mergeRequest }),
+    };
   }
 }

@@ -44,7 +44,7 @@ describe("cli", () => {
     const usage = (await run("--help")).out;
 
     expect(usage).toContain(
-      "kerpeten review [--dry-run] [--full] [--base <rev>] [--context-file <path>] [--extra-context <path or ->] [--json] [--all | --read]",
+      "kerpeten review [--dry-run] [--full] [--base <rev>] [--mr <n>] [--context-file <path>] [--extra-context <path or ->] [--json] [--all | --read]",
     );
 
     expect(usage).toContain("review permission group: at most one of --all, --read; --all when none is given");

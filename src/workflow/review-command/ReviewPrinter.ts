@@ -1,10 +1,11 @@
 import { Inject, Service } from "@asenajs/ioc";
 import { type KitInstances, KitNames } from "../../harness-kit/index.ts";
 import { CandidateFilter } from "../../harnesses/review/CandidateFilter.ts";
-import type { JudgedFinding, LocalReviewResult } from "../../harnesses/review/types/review.ts";
+import type { JudgedFinding } from "../../harnesses/review/types/review.ts";
 import type { UsageEntry } from "../../harnesses/types/harnesses.ts";
 import { safeJson, terminalLine } from "../../text/text-utils.ts";
-import type { ReviewJson } from "./types/review-command.ts";
+import type { ReviewedMergeRequest, ReviewResult } from "../review/types/review-workflow.ts";
+import type { MergeRequestJson, ReviewJson } from "./types/review-command.ts";
 
 /** Prints the result of a review on stdout, as text or as JSON. */
 @Service("kerpeten:review-printer")
@@ -12,7 +13,7 @@ export class ReviewPrinter {
   @Inject(KitNames.IO)
   private readonly io!: KitInstances[KitNames.IO];
 
-  public print(result: LocalReviewResult, json: boolean): void {
+  public print(result: ReviewResult, json: boolean): void {
     if (!json) {
       this.printText(result);
 
@@ -20,6 +21,9 @@ export class ReviewPrinter {
     }
 
     const output: ReviewJson = {
+      ...(result.mergeRequest === undefined
+        ? {}
+        : { merge_request: ReviewPrinter.mergeRequestFields(result.mergeRequest) }),
       findings: result.findings.map((finding) => ReviewPrinter.outputFields(finding)),
       usage: result.usage,
     };
@@ -38,6 +42,27 @@ export class ReviewPrinter {
     return { ...reviewer, verdict, priority, nature, fix_effort, rationale, score, action };
   }
 
+  private static mergeRequestFields(mergeRequest: ReviewedMergeRequest): MergeRequestJson {
+    const { tenant, kind, host, projectId, number, title, state, headSha, baseSha } = mergeRequest;
+
+    return {
+      tenant,
+      platform: { kind, host },
+      project: { id: projectId },
+      mr: number,
+      title,
+      state,
+      head_sha: headSha,
+      base_sha: baseSha,
+    };
+  }
+
+  private static mergeRequestSummary(mergeRequest: ReviewedMergeRequest): string {
+    const { tenant, kind, host, projectId, number, title, state } = mergeRequest;
+
+    return `merge request: #${number} ${terminalLine(title)} (${state}), ${kind} ${terminalLine(host)}, project ${terminalLine(projectId)}, tenant ${terminalLine(tenant)}`;
+  }
+
   private static judgeSummary(finding: JudgedFinding): string {
     if ("judge_error" in finding) return `judge_error ${terminalLine(finding.judge_error)}, action ${finding.action}`;
 
@@ -53,8 +78,10 @@ export class ReviewPrinter {
     return `usage: ${entry.role} ${entry.provider}/${entry.model}: ${entry.calls} calls, ${entry.input_tokens} input tokens, ${entry.output_tokens} output tokens${cache.length > 0 ? `, ${cache.join(", ")}` : ""}`;
   }
 
-  private printText(result: LocalReviewResult): void {
+  private printText(result: ReviewResult): void {
     const { io } = this;
+
+    if (result.mergeRequest !== undefined) io.out(ReviewPrinter.mergeRequestSummary(result.mergeRequest));
 
     io.out(
       `review: ${result.baseSha.slice(0, 12)}..${result.headSha.slice(0, 12)}, ${result.changedFiles.length} changed files, prompt reviewer ${result.promptVersion}`,

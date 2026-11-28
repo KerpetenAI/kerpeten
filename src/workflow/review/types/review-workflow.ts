@@ -1,4 +1,5 @@
 import type { KerpetenConfig } from "../../../capability/config/types/config.ts";
+import type { MergeRequest } from "../../../capability/platform/types/platform.ts";
 import type { JudgeStepResult } from "../../../harnesses/judge/types/judge.ts";
 import type {
   DiscussedFinding,
@@ -17,6 +18,7 @@ import type { Logger } from "../../../log/Logger.ts";
 export interface ReviewInput {
   readonly repo: string;
   readonly base?: string;
+  readonly mr?: number;
   readonly contextFile?: string;
   readonly extraContext?: string;
   readonly group?: string;
@@ -27,16 +29,27 @@ export interface ReviewInput {
   readonly log: Logger;
 }
 
+/** The merge request a review is of, with the tenant it is reviewed for: together they say whose review of what it is. */
+export interface ReviewedMergeRequest extends MergeRequest {
+  readonly tenant: string;
+}
+
+/** The result of the review workflow: the local review, and the merge request when the review was of one. */
+export interface ReviewResult extends LocalReviewResult {
+  readonly mergeRequest?: ReviewedMergeRequest;
+}
+
 export interface ReportBasis {
   readonly baseSha: string;
   readonly headSha: string;
   readonly changedFiles: readonly string[];
   readonly promptVersion: string;
+  readonly mergeRequest?: ReviewedMergeRequest;
 }
 
 export type ReportHead = Pick<
-  LocalReviewResult,
-  "baseSha" | "headSha" | "changedFiles" | "dropped" | "clipped" | "promptVersion"
+  ReviewResult,
+  "baseSha" | "headSha" | "changedFiles" | "dropped" | "clipped" | "promptVersion" | "mergeRequest"
 >;
 
 export interface ReviewOutcome {

@@ -45,8 +45,12 @@ export interface ProcessResult {
   readonly stderr: string;
 }
 
+/**
+ * How a streamed program ended. A program that did not start gives the error text and, when the system named one,
+ * the error code: `ENOENT` for a program that is not found.
+ */
 export type ProcessOutcome =
-  | { readonly kind: "not_started"; readonly error: string }
+  | { readonly kind: "not_started"; readonly error: string; readonly code?: string }
   | { readonly kind: "timed_out"; readonly timeoutMs: number }
   | { readonly kind: "stopped" }
   | { readonly kind: "exited"; readonly exitCode: number; readonly stderr: string };

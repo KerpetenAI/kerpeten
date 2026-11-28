@@ -75,12 +75,12 @@ export function repoWithBranch(): { repo: string; base: string; head: string } {
 
 export async function changed(repo: string): Promise<After<typeof ChangeStep>> {
   const input: ReviewInput = { repo, base: "main", pathEnv: process.env.PATH ?? "", ...runValues() };
-
-  const added = await runStep(await reviewComponent(ChangeStep), input);
+  const state = { ...input, mergeRequest: undefined };
+  const added = await runStep(await reviewComponent(ChangeStep), state);
 
   if (added instanceof WorkflowEnd) throw new Error("the change is empty");
 
-  return { ...input, ...added };
+  return { ...state, ...added };
 }
 
 export function reviewerRun(findings: readonly ReviewerFinding[]): ReviewerRun {

@@ -13,6 +13,7 @@ import { GitDiff } from "../capability/git/GitDiff.ts";
 import { GitRoot } from "../capability/git/GitRoot.ts";
 import { HeadCommit } from "../capability/git/HeadCommit.ts";
 import { PermissionGroups } from "../capability/PermissionGroups.ts";
+import { GitHubPlatform } from "../capability/platform/GitHubPlatform.ts";
 import { RepoJail } from "../capability/repo/RepoJail.ts";
 import { RipgrepSearch } from "../capability/repo/RipgrepSearch.ts";
 import { SearchTimer } from "../capability/repo/SearchTimer.ts";
@@ -46,6 +47,7 @@ import { ReviewWorkflow } from "../workflow/review/ReviewWorkflow.ts";
 import { CandidateStep } from "../workflow/review/step/CandidateStep.ts";
 import { ChangeStep } from "../workflow/review/step/ChangeStep.ts";
 import { JudgeStep } from "../workflow/review/step/JudgeStep.ts";
+import { MergeRequestStep } from "../workflow/review/step/MergeRequestStep.ts";
 import { ReviewerStep } from "../workflow/review/step/ReviewerStep.ts";
 import { ScoreStep } from "../workflow/review/step/ScoreStep.ts";
 import { ModelKeys } from "../workflow/review-command/ModelKeys.ts";
@@ -86,6 +88,7 @@ export class KerpetenApp {
     CapabilitiesCommand,
     CapabilityListStep,
     ReviewWorkflow,
+    MergeRequestStep,
     ChangeStep,
     ReviewerStep,
     CandidateStep,
@@ -117,6 +120,7 @@ export class KerpetenApp {
     Git,
     GitDiff,
     HeadCommit,
+    GitHubPlatform,
     RepoJail,
     RipgrepSearch,
     SearchTimer,
