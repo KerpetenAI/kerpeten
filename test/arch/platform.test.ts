@@ -9,6 +9,7 @@ import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
 import { CapabilityUses, capabilitySpec, harnessSpec } from "../../src/harness-kit/index.ts";
 import { Harnesses } from "../../src/harnesses/Harnesses.ts";
 import { MergeRequestStep } from "../../src/workflow/review/step/MergeRequestStep.ts";
+import { WrittenCommentStep } from "../../src/workflow/review/step/WrittenCommentStep.ts";
 
 const root = join(import.meta.dir, "..", "..");
 const PLATFORM = "src/capability/platform/";
@@ -33,6 +34,7 @@ test("only the review workflows and the composition root import the platform cap
 
   expect(importing).toContain("src/app/KerpetenApp.ts");
   expect(importing).toContain("src/workflow/review/step/MergeRequestStep.ts");
+  expect(importing).toContain("src/workflow/review/step/WrittenCommentStep.ts");
   expect(importing.filter((path) => !READERS.some((reader) => path.startsWith(reader)))).toEqual([]);
 });
 
@@ -48,6 +50,7 @@ test("no workflow names a platform capability: the flow steps take the platform 
   );
 
   expect(CapabilityUses.of(MergeRequestStep).map((use) => use.capability)).toEqual([PlatformChoice]);
+  expect(CapabilityUses.of(WrittenCommentStep).map((use) => use.capability)).toEqual([PlatformChoice]);
 });
 
 /** Every class the tools of the harnesses take with `@Use`, and what those take in turn. */

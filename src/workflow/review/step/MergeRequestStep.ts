@@ -2,10 +2,9 @@ import { Inject } from "@asenajs/ioc";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
 import { PlatformChoice } from "../../../capability/platform/PlatformChoice.ts";
-import { PlatformChoiceError } from "../../../capability/platform/PlatformChoiceError.ts";
-import { PlatformError } from "../../../capability/platform/PlatformError.ts";
 import { FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
 import { ReviewInputError } from "../../../harnesses/review/ReviewInputError.ts";
+import { mergeRequestReadError } from "../review-utils.ts";
 import type { ReviewedMergeRequest, ReviewInput } from "../types/review-workflow.ts";
 
 /**
@@ -15,6 +14,9 @@ import type { ReviewedMergeRequest, ReviewInput } from "../types/review-workflow
  * platform cannot be told stops the review. The merge request is the one of the project the `origin` remote names; a
  * repository without such a remote stops the review too. A review of no merge request adds none and chooses no
  * platform. The tenant is the one `KERPETEN_TENANT` names, `default` when it names none.
+ *
+ * A read that fails ends the review as a wrong input when the user can put it right, and as a platform error when the
+ * platform failed; `mergeRequestReadError` says which is which.
  */
 @FlowStep({
   name: "merge-request",
@@ -63,11 +65,7 @@ export class MergeRequestStep extends FlowStepBase {
 
       return { ...(await platform.mergeRequest(number)), tenant: this.tenant() };
     } catch (error) {
-      if (error instanceof PlatformError || error instanceof PlatformChoiceError) {
-        throw new ReviewInputError(`--mr ${number}: ${error.message}`);
-      }
-
-      throw error;
+      throw mergeRequestReadError(number, error);
     }
   }
 

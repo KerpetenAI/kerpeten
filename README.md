@@ -94,6 +94,7 @@ Another endpoint that speaks the API of one of these providers works too, with `
 3. **Filter.** Findings that point to a file or to lines that do not exist are dropped.
 4. **Judge.** Each finding goes to the judge model in its own call. The judge checks it against the code and labels it: `verified`, `unverified` or `refuted`, with a priority, a nature and the effort of the fix.
 5. **Scorer.** The labels become a score from 0 to 100. The score decides what a posted review would do with the finding: a comment on its line, a line in the summary, or nothing.
+6. **Comment plan.** For a pull request or merge request, Kerpeten decides what it would write: which findings become comments on lines of the diff, which go to the one summary comment and which are already written; nothing is posted yet.
 
 ## Commands
 

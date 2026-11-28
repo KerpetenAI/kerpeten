@@ -9,6 +9,7 @@ import type {
   ReviewerRun,
 } from "../../../harnesses/review/types/review.ts";
 import type { ProviderLlm } from "../../../harnesses/types/harnesses.ts";
+import type { CommentPlan, PlannedFinding } from "../../../layer/comment/types/comment.ts";
 import type { Logger } from "../../../log/Logger.ts";
 
 /**
@@ -34,9 +35,14 @@ export interface ReviewedMergeRequest extends MergeRequest {
   readonly tenant: string;
 }
 
-/** The result of the review workflow: the local review, and the merge request when the review was of one. */
-export interface ReviewResult extends LocalReviewResult {
+/**
+ * The result of the review workflow: the local review, and the merge request with the plan of its comments when the
+ * review was of one. The action of a finding is then the one the comment plan gives it.
+ */
+export interface ReviewResult extends Omit<LocalReviewResult, "findings"> {
+  readonly findings: readonly PlannedFinding[];
   readonly mergeRequest?: ReviewedMergeRequest;
+  readonly commentPlan?: CommentPlan;
 }
 
 export interface ReportBasis {
@@ -57,6 +63,7 @@ export interface ReviewOutcome {
   readonly candidates: FilteredCandidates;
   readonly judged: JudgeStepResult | undefined;
   readonly findings: readonly JudgedFinding[];
+  readonly commentPlan: CommentPlan | undefined;
 }
 
 export interface ReviewChange extends ReportBasis {

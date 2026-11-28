@@ -1,0 +1,108 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import type { JudgeStepResult } from "../../../../src/harnesses/judge/types/judge.ts";
+import type { JudgedFinding } from "../../../../src/harnesses/review/types/review.ts";
+import { CommentMarker } from "../../../../src/layer/comment/CommentMarker.ts";
+import type { WrittenComment } from "../../../../src/layer/comment/types/comment.ts";
+import { CommentPlanStep } from "../../../../src/workflow/review/step/CommentPlanStep.ts";
+import { candidates, cleanDirs, config, good, repoWithBranch, reviewComponent, reviewerRun } from "../review-utils.ts";
+
+afterEach(cleanDirs);
+
+const scored: JudgedFinding = {
+  ...good,
+  file: "src/a.ts",
+  verdict: "verified",
+  priority: "P0",
+  nature: "critical",
+  fix_effort: "easy",
+  rationale: "y is never checked",
+  score: 95,
+  action: "inline",
+};
+
+/** The state after the score flow step of a review whose one finding the scorer gave a line comment. */
+async function scoredState(repo: string, written: readonly WrittenComment[] | undefined) {
+  return { ...(await candidates(repo, [good])), written, judged: undefined, findings: [scored] };
+}
+
+describe("comment plan flow step", () => {
+  test("a review of no merge request has no comment plan", async () => {
+    const { repo } = repoWithBranch();
+    const step = await reviewComponent(CommentPlanStep);
+
+    expect(step.execute(await scoredState(repo, undefined))).toEqual({ commentPlan: undefined });
+  });
+
+  test("a review of a merge request plans its comments from the diff, the commit and the configuration", async () => {
+    const { repo, head } = repoWithBranch();
+    const step = await reviewComponent(CommentPlanStep);
+    const { commentPlan } = step.execute(await scoredState(repo, []));
+
+    expect(commentPlan?.findings).toEqual([scored]);
+    expect(commentPlan?.counts).toEqual({ inline: 1, summary: 0, duplicate: 0, stored: 0 });
+
+    expect(commentPlan?.lineComments.map(({ file, startLine, endLine }) => ({ file, startLine, endLine }))).toEqual([
+      { file: "src/a.ts", startLine: 2, endLine: 2 },
+    ]);
+
+    expect(CommentMarker.read(commentPlan?.lineComments[0]?.body ?? "")?.mark).toEqual(
+      CommentMarker.finding(head, "src/a.ts", 2, 2).mark,
+    );
+
+    expect(CommentMarker.read(commentPlan?.summary.body ?? "")?.mark).toEqual(CommentMarker.summary(head).mark);
+  });
+
+  test("the limit and the language of the configuration and the comments already written reach the plan", async () => {
+    const { repo, head } = repoWithBranch();
+    const step = await reviewComponent(CommentPlanStep);
+    const state = await scoredState(repo, []);
+
+    const limited = step.execute({
+      ...state,
+      config: config("limits: { max_inline_comments: 0 }\ncomment_language: tr"),
+    });
+
+    expect(limited.commentPlan?.findings.map((finding) => finding.action)).toEqual(["summary"]);
+    expect(limited.commentPlan?.summary.body).toStartWith("## Kerpeten incelemesi\n");
+
+    const written = [{ kind: "line" as const, mark: CommentMarker.finding(head, "src/a.ts", 2, 2).mark }];
+    const again = step.execute({ ...state, written });
+
+    expect(again.commentPlan?.findings.map((finding) => finding.action)).toEqual(["suppressed_duplicate"]);
+  });
+
+  test("a review that ended early says so in the summary, with the reviewer's reason before the judge's", async () => {
+    const { repo } = repoWithBranch();
+    const step = await reviewComponent(CommentPlanStep);
+    const state = await scoredState(repo, []);
+
+    const judged: JudgeStepResult = {
+      outcomes: [],
+      usage: { role: "judge", provider: "anthropic", model: "m", input_tokens: 1, output_tokens: 1, calls: 1 },
+      toolCalls: 0,
+      unknownUsageCalls: 0,
+      partialReason: "time_budget",
+    };
+
+    expect(step.execute({ ...state, judged }).commentPlan?.summary.body).toContain(
+      "**Partial review:** the review stopped early (`time_budget`)",
+    );
+
+    const review = { ...reviewerRun([good]), partialReason: "tool_call_budget" as const };
+
+    expect(step.execute({ ...state, judged, review }).commentPlan?.summary.body).toContain(
+      "**Partial review:** the review stopped early (`tool_call_budget`)",
+    );
+
+    expect(step.execute(state).commentPlan?.summary.body).not.toContain("Partial review");
+  });
+
+  test("a review whose reviewer gave no result has no comment plan", async () => {
+    const { repo } = repoWithBranch();
+    const step = await reviewComponent(CommentPlanStep);
+    const state = await scoredState(repo, []);
+    const review = { ...reviewerRun([]), completed: false, error: "no structured result" };
+
+    expect(step.execute({ ...state, review, findings: [] })).toEqual({ commentPlan: undefined });
+  });
+});

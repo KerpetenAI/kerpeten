@@ -30,6 +30,7 @@ import { JudgePool } from "../harnesses/judge/JudgePool.ts";
 import { Prompts } from "../harnesses/Prompts.ts";
 import { CandidateFilter } from "../harnesses/review/CandidateFilter.ts";
 import { RuleFiles } from "../harnesses/review/RuleFiles.ts";
+import { CommentPlanner } from "../layer/comment/CommentPlanner.ts";
 import { Scorer } from "../layer/scoring/Scorer.ts";
 import { Logger } from "../log/Logger.ts";
 import { GlobTool } from "../tools/glob/GlobTool.ts";
@@ -49,10 +50,12 @@ import { InitWriteStep } from "../workflow/init/step/InitWriteStep.ts";
 import { ReviewWorkflow } from "../workflow/review/ReviewWorkflow.ts";
 import { CandidateStep } from "../workflow/review/step/CandidateStep.ts";
 import { ChangeStep } from "../workflow/review/step/ChangeStep.ts";
+import { CommentPlanStep } from "../workflow/review/step/CommentPlanStep.ts";
 import { JudgeStep } from "../workflow/review/step/JudgeStep.ts";
 import { MergeRequestStep } from "../workflow/review/step/MergeRequestStep.ts";
 import { ReviewerStep } from "../workflow/review/step/ReviewerStep.ts";
 import { ScoreStep } from "../workflow/review/step/ScoreStep.ts";
+import { WrittenCommentStep } from "../workflow/review/step/WrittenCommentStep.ts";
 import { ModelKeys } from "../workflow/review-command/ModelKeys.ts";
 import { ReviewCommand } from "../workflow/review-command/ReviewCommand.ts";
 import { ReviewPrinter } from "../workflow/review-command/ReviewPrinter.ts";
@@ -93,11 +96,14 @@ export class KerpetenApp {
     ReviewWorkflow,
     MergeRequestStep,
     ChangeStep,
+    WrittenCommentStep,
     ReviewerStep,
     CandidateStep,
     JudgeStep,
     ScoreStep,
+    CommentPlanStep,
     Scorer,
+    CommentPlanner,
     Prompts,
     JudgePool,
     ReviewSetup,

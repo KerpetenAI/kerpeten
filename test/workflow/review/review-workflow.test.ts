@@ -790,10 +790,12 @@ describe("local review", () => {
     expect(spec.steps.map((step) => flowStepSpec(step).name)).toEqual([
       "merge-request",
       "change",
+      "written-comments",
       "reviewer",
       "candidates",
       "judge",
       "score",
+      "comment-plan",
     ]);
 
     expect(spec.steps.every((step) => flowStepSpec(step).description.endsWith("."))).toBe(true);

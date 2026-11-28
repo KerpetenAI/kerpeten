@@ -13,6 +13,12 @@ export interface DiffResult {
   readonly patch: string;
 }
 
+/** One file's part of a patch: the path the patch gives the file, and the text from its `diff --git` line on. */
+export interface PatchSection {
+  readonly path: string;
+  readonly text: string;
+}
+
 export type GitResult = ProcessResult;
 
 export type BlobResult =

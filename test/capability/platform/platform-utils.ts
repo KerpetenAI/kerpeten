@@ -164,6 +164,20 @@ export function slurped(...pages: readonly (readonly unknown[])[]): string {
   return JSON.stringify(pages);
 }
 
+/**
+ * The answers of gh for a pull request that has no comment of any kind: three lists of one empty page. The pull
+ * request is the one of `repository`, `Acme/Shop` when none is given.
+ */
+export function noComments(number: number, repository?: string): Record<string, CliAnswer> {
+  const paths = ghPaths(number, repository);
+
+  return {
+    [paths.comments]: { stdout: slurped([]) },
+    [paths.reviews]: { stdout: slurped([]) },
+    [paths.conversation]: { stdout: slurped([]) },
+  };
+}
+
 /** The JSON glab prints for a merge request, on one line as `--output ndjson` gives it. */
 export function mergeRequestJson(fields: MergeRequestFields = {}): string {
   const iid = fields.iid ?? 12;
@@ -193,6 +207,14 @@ export function mergeRequestJson(fields: MergeRequestFields = {}): string {
 /** What `glab api --paginate --output ndjson` prints: one entry per line, the pages one after another. */
 export function jsonLines(...entries: readonly unknown[]): string {
   return entries.map((entry) => `${JSON.stringify(entry)}\n`).join("");
+}
+
+/**
+ * The answer of glab for a merge request that has no discussion: a list that prints nothing. The merge request is the
+ * one of `project`, `acme/shop` when none is given.
+ */
+export function noDiscussions(number: number, project?: string): Record<string, CliAnswer> {
+  return { [glabPaths(number, project).discussions]: { stdout: jsonLines() } };
 }
 
 /** The position of a note in the diff as GitLab gives it: on line 7 of the new side of `src/a.ts` when nothing is set. */

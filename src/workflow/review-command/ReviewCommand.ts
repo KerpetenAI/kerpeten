@@ -21,14 +21,15 @@ import type { ReviewFlags } from "./types/review-command.ts";
 
 /**
  * The `review` command: checks the flags, gets the review ready, runs the local review workflow, which it lists in its
- * chain and which joins its run of the flag's permission group, and prints the result. An error of the local review ends the command
- * with 2 when the input was wrong, a pull request or merge request of `--mr` that cannot be read among them, and with 1 otherwise, or with
- * the ChatGPT plan's stop when the plan stopped it.
+ * chain and which joins its run of the flag's permission group, and prints the result. An error of the local review
+ * ends the command with 2 when the input was wrong, which a pull request or merge request of `--mr` is that the user
+ * can make readable, and with 1 otherwise, a failure of the platform among them, or with the ChatGPT plan's stop when
+ * the plan stopped it.
  */
 @Workflow({
   name: "review-command",
   description:
-    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews pull request n on GitHub, read with gh, or merge request n on GitLab, read with glab, of the project the origin remote names, with its title and description; HEAD must be its last commit. This build needs --dry-run.",
+    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews pull request n on GitHub, read with gh, or merge request n on GitLab, read with glab, of the project the origin remote names, with its title and description, and shows the comments a posted review would write to it, without writing them; HEAD must be its last commit. This build needs --dry-run.",
   steps: [ReviewFlagStep, ReviewSetupStep, ReviewWorkflow, ReviewOutcomeStep, ReviewPrintStep],
   command: {
     name: "review",

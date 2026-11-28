@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { ExitCode } from "../../src/harness-kit/index.ts";
+import { CommentMarker } from "../../src/layer/comment/CommentMarker.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
 import {
+  discussion,
   fakeCli,
   GITHUB_ORIGIN,
   GITLAB_ORIGIN,
@@ -13,9 +15,16 @@ import {
   ghPaths,
   glabCalls,
   glabPaths,
+  jsonLines,
   mergeRequestJson,
+  noComments,
+  noDiscussions,
+  note,
+  position,
   pullJson,
+  SHA_B,
   SHA_C,
+  slurped,
 } from "../capability/platform/platform-utils.ts";
 import type { CliAnswer, CliName, GhAnswer } from "../capability/platform/types/platform.ts";
 import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
@@ -37,18 +46,34 @@ const CONFIG = `models:
   judge: { provider: anthropic, model: k3.1-judge, base_url: "${KIMI_URL}", api_key_env: KIMI_API_KEY, max_output_tokens: 2000 }
 `;
 
-const PULL = ghPaths(12).pull;
+const COMMENTS = ghPaths(12);
+
+const PULL = COMMENTS.pull;
 
 const LOWER_CASE_PULL = ghPaths(12, "acme/shop").pull;
 
 const MERGE_REQUEST = glabPaths(12).mergeRequest;
 
-const GH_READ = ["api", "--method", "GET", "--hostname", "github.com", PULL];
+const DISCUSSIONS = glabPaths(12).discussions;
+
+const GH_READ = ["api", "--method", "GET", "--hostname", "github.com"];
 
 const GLAB_READ = ["api", "--method", "GET", "--output", "ndjson", "--hostname", "gitlab.com", MERGE_REQUEST];
 
 const NEEDS_PROJECT =
   "a review of a pull request or merge request reads it from the project of the origin remote, so the remote must be the address of a project on GitHub or GitLab";
+
+const GLAB_DISCUSSIONS = [
+  "api",
+  "--method",
+  "GET",
+  "--output",
+  "ndjson",
+  "--hostname",
+  "gitlab.com",
+  "--paginate",
+  DISCUSSIONS,
+];
 
 const finding = {
   file: "src/a.ts",
@@ -71,6 +96,12 @@ const labels = {
 };
 
 const REVIEW = [{ text: "done" }, { text: JSON.stringify({ findings: [finding] }) }];
+
+const JUDGED = [{ text: "done" }, { text: JSON.stringify(labels) }];
+
+const JUDGED_HIGH = [{ text: "done" }, { text: JSON.stringify({ ...labels, priority: "P0", nature: "critical" }) }];
+
+const NOTE = "👎 If you do not want this finding again, react with 👎; you can reply with the reason.";
 
 const dirs: string[] = [];
 
@@ -116,9 +147,10 @@ function repo(origin: string = GITHUB_ORIGIN, config = ""): { dir: string; fork:
 
 /**
  * Runs the command in `cwd` with a fake `cli`, gh when none is named, first on the PATH of the program's environment,
- * which gives `answers`, or with a PATH that does not hold that tool at all when `answers` is `"not installed"`. The
- * tool of the other platform is there too, as a fake without answers, so a call of it shows. `bin` is the folder of
- * the fakes, a new one when none is given, where they keep what they were called with.
+ * which gives `answers`, or with a PATH that does not hold that tool at all when `answers` is `"not installed"`.
+ * Merge request 12 has no comment unless `answers` give some. The tool of the other platform is there too, as a fake
+ * without answers, so a call of it shows. `bin` is the folder of the fakes, a new one when none is given, where they
+ * keep what they were called with.
  */
 async function run(
   cwd: string,
@@ -143,7 +175,9 @@ async function run(
 
   fakeCli(bin, cli === "gh" ? "glab" : "gh", {});
 
-  if (answers !== "not installed") fakeCli(bin, cli, answers, options.before);
+  if (answers !== "not installed") {
+    fakeCli(bin, cli, { ...(cli === "gh" ? noComments(12) : noDiscussions(12)), ...answers }, options.before);
+  }
 
   const code = await KerpetenApp.run(
     {
@@ -190,7 +224,14 @@ describe("kerpeten review --dry-run --mr", () => {
     ]);
 
     expect(result.out).toContain("- src/a.ts:2-2 [bug] Division by zero");
-    expect(ghCalls(result.bin)).toEqual([GH_READ]);
+
+    expect(ghCalls(result.bin)).toEqual([
+      [...GH_READ, PULL],
+      [...GH_READ, "--paginate", "--slurp", COMMENTS.comments],
+      [...GH_READ, "--paginate", "--slurp", COMMENTS.reviews],
+      [...GH_READ, "--paginate", "--slurp", COMMENTS.conversation],
+    ]);
+
     expect(glabCalls(result.bin)).toEqual([]);
 
     const prompt = promptText(result.reviewerCalls[0]);
@@ -219,7 +260,7 @@ describe("kerpeten review --dry-run --mr", () => {
 
     const printed = JSON.parse(result.out);
 
-    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "usage"]);
+    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "comment_plan", "usage"]);
 
     expect(printed.merge_request).toEqual({
       tenant: "acme",
@@ -368,36 +409,41 @@ describe("kerpeten review --dry-run --mr", () => {
     expect(result.calls.length).toBe(0);
   });
 
-  test("each failure of gh is a usage error with the flag and what to do, before any model call", async () => {
-    const cases: [GhAnswer, string][] = [
+  test("each failure of gh ends the review before any model call, with the flag and what to do: with 2 when the user can put it right, with 1 when GitHub failed", async () => {
+    const cases: [GhAnswer, string, ExitCode][] = [
       [
         { exitCode: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" },
         "kerpeten review: --mr 12: gh is not signed in to github.com: run `gh auth login --hostname github.com` and run again",
+        ExitCode.USAGE,
       ],
       [
         { exitCode: 1, stderr: "gh: Not Found (HTTP 404)\n", stdout: '{"message":"Not Found","status":"404"}' },
         "kerpeten review: --mr 12: pull request 12 was not found in github.com/Acme/Shop, the repository of the origin remote: check the number, and that gh is signed in to github.com with an account that can read the repository; a pull request of another repository, such as the one a fork was made from, is not read",
+        ExitCode.USAGE,
       ],
       [
         { stdout: pullJson({ fullName: "Other/Shop" }) },
         'kerpeten review: --mr 12: gh answered with a pull request of "Other/Shop", not of Acme/Shop, the repository of the origin remote; when the repository was renamed or moved, point the origin remote at its new address and run again',
+        ExitCode.FAILED,
       ],
       [
         { exitCode: 1, stderr: "gh: Server Error (HTTP 502)\n" },
         "kerpeten review: --mr 12: gh api failed (exit 1): gh: Server Error (HTTP 502)",
+        ExitCode.FAILED,
       ],
       [
         { stdout: "<html>busy</html>" },
         "kerpeten review: --mr 12: the answer of gh for pull request 12 cannot be read: it is no JSON",
+        ExitCode.FAILED,
       ],
     ];
 
-    for (const [answer, message] of cases) {
+    for (const [answer, message, code] of cases) {
       const { dir } = repo();
       const result = await run(dir, ["review", "--dry-run", "--mr", "12"], { [PULL]: answer });
 
       expect({ code: result.code, err: result.err }).toEqual({
-        code: ExitCode.USAGE,
+        code,
         err: expect.stringContaining(message),
       });
 
@@ -488,6 +534,362 @@ describe("kerpeten review --dry-run --mr", () => {
   });
 });
 
+/** A comment on lines of `src/a.ts` as GitHub gives it, written by `login` with the text `body`. */
+function lineComment(id: number, login: string, body: string): Record<string, unknown> {
+  return {
+    id,
+    user: { login },
+    body,
+    path: "src/a.ts",
+    subject_type: "line",
+    side: "RIGHT",
+    start_side: null,
+    line: 2,
+    start_line: null,
+    original_line: 2,
+    original_start_line: null,
+    commit_id: SHA_B,
+    original_commit_id: SHA_B,
+    created_at: "2026-11-20T10:00:00Z",
+  };
+}
+
+describe("kerpeten review --dry-run --mr: the comment plan", () => {
+  test("the text output has one line for the comment plan after the findings line, and the finding shows its planned action", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+
+    expect(result.out.split("\n").slice(2, 6)).toEqual([
+      "findings: 1",
+      "comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored",
+      "- src/a.ts:2-2 [bug] Division by zero",
+      "  verdict verified, priority P0, nature critical, fix_effort easy, score 95, action inline",
+    ]);
+
+    expect(result.out).not.toContain("kerpeten:finding");
+    expect(result.err).toContain('"comment plan" command=review inline=1 summary=0 duplicate=0 stored=0');
+  });
+
+  test("--json has the comment plan with the whole text of the line comment and of the summary comment", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+
+    const printed = JSON.parse(result.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["inline"]);
+
+    expect(printed.comment_plan).toEqual({
+      line_comments: [
+        {
+          file: "src/a.ts",
+          start_line: 2,
+          end_line: 2,
+          body: [
+            "**Division by zero** · bug · P0",
+            "",
+            "y can be 0",
+            "",
+            "**Fix:** Throw when y is 0.",
+            "",
+            NOTE,
+            `<!-- kerpeten:finding v1 head=${head} file=c3JjL2EudHM lines=2-2 -->`,
+          ].join("\n"),
+        },
+      ],
+      summary: {
+        body: [
+          "## Kerpeten review",
+          `Reviewed commit ${head}. Line comments in this run: 1.`,
+          `<!-- kerpeten:summary v1 head=${head} -->`,
+        ].join("\n\n"),
+      },
+    });
+  });
+
+  test("a finding scored for the summary is listed in the summary comment, and no line comment is planned", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED },
+    );
+
+    const printed = JSON.parse(result.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["summary"]);
+    expect(printed.comment_plan.line_comments).toEqual([]);
+
+    expect(printed.comment_plan.summary.body).toBe(
+      [
+        "## Kerpeten review",
+        `Reviewed commit ${head}. Line comments in this run: 0.`,
+        "### Division by zero\n`src/a.ts:2` · bug · P1",
+        "y can be 0",
+        "**Fix:** Throw when y is 0.",
+        `<!-- kerpeten:summary v1 head=${head} -->`,
+      ].join("\n\n"),
+    );
+  });
+
+  test("a line comment with Kerpeten's marker for the same commit and lines, whoever wrote it, makes the finding already written", async () => {
+    const { dir, base, head } = repo();
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+
+    const answers = {
+      [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+      [COMMENTS.comments]: {
+        stdout: slurped([
+          lineComment(101, "ada", "I do not agree with this."),
+          lineComment(
+            102,
+            "the-user-themselves",
+            `**Division by zero** · bug · P0\n\ny can be 0\n\n${NOTE}\n${marker}`,
+          ),
+        ]),
+      },
+    };
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], answers, { judgeScript: JUDGED_HIGH });
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 0 line comments, 0 in the summary, 1 already written, 0 stored");
+    expect(result.out).toContain("score 95, action suppressed_duplicate");
+    expect(result.err).toContain('"merge request comments read" command=review kerpeten_line=1 kerpeten_summary=0');
+
+    const json = await run(dir, ["review", "--dry-run", "--mr", "12", "--json"], answers, { judgeScript: JUDGED_HIGH });
+    const printed = JSON.parse(json.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["suppressed_duplicate"]);
+    expect(printed.comment_plan.line_comments).toEqual([]);
+
+    expect(printed.comment_plan.summary.body).toBe(
+      [
+        "## Kerpeten review",
+        `Reviewed commit ${head}. Line comments in this run: 0. Findings that already had a line comment: 1.`,
+        `<!-- kerpeten:summary v1 head=${head} -->`,
+      ].join("\n\n"),
+    );
+  });
+
+  test("a marker for another commit or other lines, one that does not end its comment and one in the conversation write nothing off", async () => {
+    const { dir, base, head } = repo();
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+        [COMMENTS.comments]: {
+          stdout: slurped([
+            lineComment(101, "octocat", `Earlier.\n${CommentMarker.finding(SHA_C, "src/a.ts", 2, 2).line()}`),
+            lineComment(102, "octocat", `Other lines.\n${CommentMarker.finding(head, "src/a.ts", 1, 2).line()}`),
+            lineComment(103, "octocat", `${marker}\nI quote the marker and go on.`),
+          ]),
+        },
+        [COMMENTS.reviews]: {
+          stdout: slurped([{ id: 201, user: { login: "octocat" }, body: `A review.\n${marker}`, state: "COMMENTED" }]),
+        },
+        [COMMENTS.conversation]: {
+          stdout: slurped([
+            { id: 301, user: { login: "octocat" }, body: `Quoted.\n${marker}`, created_at: "2026-11-21T10:00:00Z" },
+            {
+              id: 302,
+              user: { login: "octocat" },
+              body: `## Kerpeten review\n\n${CommentMarker.summary(head).line()}`,
+              created_at: "2026-11-21T10:00:00Z",
+            },
+          ]),
+        },
+      },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored");
+    expect(result.err).toContain('"merge request comments read" command=review kerpeten_line=2 kerpeten_summary=1');
+  });
+
+  test("comments that could not all be read stop the review with exit code 1 and the reason, before any model call", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+        [COMMENTS.reviews]: { stdout: slurped([]), stderr: "gh: rate limit\n", exitCode: 1 },
+        [COMMENTS.conversation]: { stdout: "<html>busy</html>" },
+      },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.FAILED);
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: the comments of the pull request could not all be read, so the review cannot tell which findings are already written: repos/Acme/Shop/pulls/12/reviews: gh api failed (exit 1): gh: rate limit; repos/Acme/Shop/issues/12/comments: the answer of gh is not the list of pages it should be",
+    );
+
+    expect(result.out).toBe("");
+    expect(result.calls.length).toBe(0);
+    expect(ghCalls(result.bin).length).toBe(4);
+  });
+
+  test("a sign-in that is gone when the comments are read is a usage error, before any model call", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+      [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+      [COMMENTS.comments]: { exitCode: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" },
+    });
+
+    expect(result.code).toBe(ExitCode.USAGE);
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: gh is not signed in to github.com: run `gh auth login --hostname github.com` and run again",
+    );
+
+    expect(result.out).toBe("");
+    expect(result.calls.length).toBe(0);
+  });
+
+  test("the comments are read after the working copy is checked, so a wrong commit costs no read of them", async () => {
+    const { dir, fork, base } = repo();
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+      [PULL]: { stdout: pullJson({ headSha: fork, baseSha: base }) },
+      [COMMENTS.comments]: { stdout: slurped([]), stderr: "gh: Server Error (HTTP 502)\n", exitCode: 1 },
+    });
+
+    expect(result.code).toBe(ExitCode.USAGE);
+    expect(result.err).toContain("HEAD is at");
+    expect(ghCalls(result.bin)).toEqual([[...GH_READ, PULL]]);
+  });
+
+  test("with limits.max_inline_comments 0 the finding goes to the summary, whatever its score", async () => {
+    const { dir, base, head } = repo(GITHUB_ORIGIN, "limits: { max_inline_comments: 0 }\n");
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 0 line comments, 1 in the summary, 0 already written, 0 stored");
+    expect(result.out).toContain("score 95, action summary");
+  });
+
+  test("the comment language tr writes the fixed texts in Turkish", async () => {
+    const { dir, base, head } = repo(GITHUB_ORIGIN, "comment_language: tr\n");
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    const plan = JSON.parse(result.out).comment_plan;
+
+    expect(plan.line_comments[0].body).toContain(
+      "\n\n**Düzeltme:** Throw when y is 0.\n\n👎 Bu bulgu tekrar gelmesin istiyorsan 👎 bas; nedenini cevap olarak yazabilirsin.\n<!-- kerpeten:finding v1 ",
+    );
+
+    expect(plan.summary.body).toStartWith(`## Kerpeten incelemesi\n\nİncelenen commit: ${head}. `);
+  });
+
+  test("text of a model that tries to hide the note or forge a marker is made safe, and its control characters reach no output raw", async () => {
+    const { dir, base, head } = repo();
+    const forged = CommentMarker.finding(SHA_C, "src/forged.ts", 9, 9).line();
+
+    const hostile = {
+      ...finding,
+      title: "Division \u001b[31mby zero <details>",
+      body: `y can be 0\n<!-- hidden from here\n\`\`\`ts\nopen\u0007`,
+      fix: `Throw.\n${forged}`,
+    };
+
+    const script = [{ text: "done" }, { text: JSON.stringify({ findings: [hostile] }) }];
+    const answers = { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } };
+    const text = await run(dir, ["review", "--dry-run", "--mr", "12"], answers, { script, judgeScript: JUDGED_HIGH });
+
+    const json = await run(dir, ["review", "--dry-run", "--mr", "12", "--json"], answers, {
+      script,
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(text.code).toBe(ExitCode.OK);
+    expect(text.out).toContain("comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored");
+
+    const control = [...`${text.out}${json.out}`].filter((char) => {
+      const code = char.charCodeAt(0);
+
+      return char !== "\n" && (code < 0x20 || (code >= 0x7f && code <= 0x9f));
+    });
+
+    expect(control).toEqual([]);
+
+    const [comment] = JSON.parse(json.out).comment_plan.line_comments;
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+
+    expect(comment.body.split("\n").slice(-2)).toEqual([NOTE, marker]);
+    expect(CommentMarker.read(comment.body)?.line()).toBe(marker);
+    expect(comment.body).toContain("\\<details>");
+
+    expect(comment.body).toContain(
+      "\n\\<!-- hidden from here\n```ts\nopen\u0007\n```\n\n**Fix:**\nThrow.\n\\<!-- kerpeten:finding v1 ",
+    );
+
+    expect(Bun.markdown.html(comment.body).endsWith(`<p>${NOTE}</p>\n${marker}\n`)).toBe(true);
+  });
+
+  test("a review without --mr has no comment plan and asks the platform for nothing", async () => {
+    const { dir, base, head } = repo();
+    const answers = { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } };
+    const text = await run(dir, ["review", "--dry-run", "--base", "main"], answers, { judgeScript: JUDGED_HIGH });
+
+    expect(text.code).toBe(ExitCode.OK);
+    expect(text.out).not.toContain("comment plan");
+    expect(text.out).not.toContain("merge request");
+
+    expect(text.out.split("\n").slice(1, 4)).toEqual([
+      "findings: 1",
+      "- src/a.ts:2-2 [bug] Division by zero",
+      "  verdict verified, priority P0, nature critical, fix_effort easy, score 95, action inline",
+    ]);
+
+    expect(text.err).not.toContain("comment plan");
+    expect(text.err).not.toContain("merge request comments read");
+    expect(ghCalls(text.bin)).toEqual([]);
+
+    const json = await run(dir, ["review", "--dry-run", "--base", "main", "--json"], answers, {
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(Object.keys(JSON.parse(json.out))).toEqual(["findings", "usage"]);
+  });
+});
+
 describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
   test("reviews the merge request glab gives: one read of it, its title and description for the reviewer, one line for it in the output", async () => {
     const { dir, fork, base, head } = repo(GITLAB_ORIGIN);
@@ -516,7 +918,7 @@ describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
     ]);
 
     expect(result.out).toContain("- src/a.ts:2-2 [bug] Division by zero");
-    expect(glabCalls(result.bin)).toEqual([GLAB_READ]);
+    expect(glabCalls(result.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
     expect(ghCalls(result.bin)).toEqual([]);
 
     const prompt = promptText(result.reviewerCalls[0]);
@@ -544,7 +946,7 @@ describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
 
     const printed = JSON.parse(result.out);
 
-    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "usage"]);
+    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "comment_plan", "usage"]);
 
     expect(printed.merge_request).toEqual({
       tenant: "acme",
@@ -634,39 +1036,46 @@ describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
     expect(result.calls.length).toBe(0);
   });
 
-  test("each failure of glab is a usage error with the flag and what to do, before any model call", async () => {
-    const cases: [CliAnswer, string][] = [
+  test("each failure of glab ends the review before any model call, with the flag and what to do: with 2 when the user can put it right, with 1 when GitLab failed", async () => {
+    const cases: [CliAnswer, string, ExitCode][] = [
       [
         { exitCode: 1, stderr: "glab: 401 Unauthorized (HTTP 401)\n", stdout: '{"message":"401 Unauthorized"}' },
         "kerpeten review: --mr 12: GitLab at gitlab.com did not accept the sign-in of glab (HTTP 401): run `glab auth login --hostname gitlab.com`, or correct the token in GITLAB_TOKEN when that variable is set, and run again",
+        ExitCode.USAGE,
       ],
       [
         { exitCode: 1, stderr: "glab: 404 Not found (HTTP 404)\n", stdout: '{"message":"404 Not found"}' },
         "kerpeten review: --mr 12: merge request 12 was not found in gitlab.com/acme/shop, the project of the origin remote: check the number; GitLab gives the same answer for a private project that glab cannot read, so check too that glab is signed in to gitlab.com (`glab auth login --hostname gitlab.com`) with an account that can read the project; a merge request of another project, such as the one a fork was made from, is not read",
+        ExitCode.USAGE,
       ],
       [
         { stdout: mergeRequestJson({ webUrl: "https://gitlab.com/other/shop/-/merge_requests/12" }) },
         'kerpeten review: --mr 12: glab answered with a merge request of "other/shop", not of acme/shop, the project of the origin remote; when the project was renamed or moved, point the origin remote at its new address and run again',
+        ExitCode.FAILED,
       ],
       [
         { exitCode: 1, stderr: "glab: 502 Bad Gateway (HTTP 502)\n" },
         "kerpeten review: --mr 12: glab api failed (exit 1): glab: 502 Bad Gateway (HTTP 502)",
+        ExitCode.FAILED,
       ],
       [
         { stdout: "<html>busy</html>" },
         "kerpeten review: --mr 12: the answer of glab for merge request 12 cannot be read: it is no JSON",
+        ExitCode.FAILED,
       ],
       [
         { stdout: mergeRequestJson({ state: "locked" }) },
         "kerpeten review: --mr 12: merge request 12 is locked: GitLab is merging it right now, so run again when the merge is done",
+        ExitCode.FAILED,
       ],
       [
         { stdout: mergeRequestJson({ baseSha: null }) },
         "kerpeten review: --mr 12: merge request 12 has no diff yet, GitLab names no commits for it: push a commit to its branch, or wait until GitLab has made the diff, and run again",
+        ExitCode.FAILED,
       ],
     ];
 
-    for (const [answer, message] of cases) {
+    for (const [answer, message, code] of cases) {
       const { dir } = repo(GITLAB_ORIGIN);
 
       const result = await run(
@@ -677,7 +1086,7 @@ describe("kerpeten review --dry-run --mr on a GitLab repository", () => {
       );
 
       expect({ code: result.code, err: result.err }).toEqual({
-        code: ExitCode.USAGE,
+        code,
         err: expect.stringContaining(message),
       });
 
@@ -763,11 +1172,13 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
 
     expect(glabCalls(onGitLab.bin)).toEqual([
       ["api", "--method", "GET", "--output", "ndjson", "--hostname", "git.example.com", MERGE_REQUEST],
+      ["api", "--method", "GET", "--output", "ndjson", "--hostname", "git.example.com", "--paginate", DISCUSSIONS],
     ]);
 
     const github = repo(SELF_HOSTED_ORIGIN, "platform: github\n");
 
     const onGitHub = await run(github.dir, ["review", "--dry-run", "--mr", "12", "--json"], {
+      ...noComments(12, "acme/shop"),
       [LOWER_CASE_PULL]: {
         stdout: pullJson({
           headSha: github.head,
@@ -781,21 +1192,26 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
     expect(JSON.parse(onGitHub.out).merge_request.platform).toEqual({ kind: "github", host: "git.example.com" });
     expect(glabCalls(onGitHub.bin)).toEqual([]);
 
-    expect(ghCalls(onGitHub.bin)).toEqual([
-      ["api", "--method", "GET", "--hostname", "git.example.com", LOWER_CASE_PULL],
-    ]);
+    expect(ghCalls(onGitHub.bin).length).toBe(4);
+
+    for (const call of ghCalls(onGitHub.bin)) {
+      expect(call.slice(0, 5)).toEqual(["api", "--method", "GET", "--hostname", "git.example.com"]);
+      expect(call.at(-1)).toStartWith("repos/acme/shop/");
+    }
   });
 
   test("the platform key wins over the host of the origin remote", async () => {
     const { dir, base, head } = repo(GITLAB_ORIGIN, "platform: github\n");
 
     const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+      ...noComments(12, "acme/shop"),
       [LOWER_CASE_PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
     });
 
     expect(result.code).toBe(ExitCode.OK);
     expect(result.out).toContain("merge request: #12 Add div (open), github github.com, project 4242, tenant default");
-    expect(ghCalls(result.bin)).toEqual([["api", "--method", "GET", "--hostname", "gitlab.com", LOWER_CASE_PULL]]);
+    expect(ghCalls(result.bin).length).toBe(4);
+    expect(ghCalls(result.bin)[0]).toEqual(["api", "--method", "GET", "--hostname", "gitlab.com", LOWER_CASE_PULL]);
     expect(glabCalls(result.bin)).toEqual([]);
   });
 
@@ -818,7 +1234,12 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
 
     expect(onGitHub.code).toBe(ExitCode.OK);
     expect(JSON.parse(onGitHub.out).merge_request.title).toBe("Add div");
-    expect(ghCalls(onGitHub.bin)).toEqual([GH_READ]);
+    expect(ghCalls(onGitHub.bin).length).toBe(4);
+
+    for (const call of ghCalls(onGitHub.bin)) {
+      expect(call.slice(0, 5)).toEqual(GH_READ);
+      expect(call.at(-1)).toStartWith("repos/Acme/Shop/");
+    }
 
     const gitlab = repo(GITLAB_ORIGIN);
 
@@ -844,7 +1265,7 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
 
     expect(onGitLab.code).toBe(ExitCode.OK);
     expect(JSON.parse(onGitLab.out).merge_request.title).toBe("Add div");
-    expect(glabCalls(onGitLab.bin)).toEqual([GLAB_READ]);
+    expect(glabCalls(onGitLab.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
   });
 
   test("an origin remote in git's remote helper form is read as the URL it holds", async () => {
@@ -858,7 +1279,7 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
     );
 
     expect(result.code).toBe(ExitCode.OK);
-    expect(glabCalls(result.bin)).toEqual([GLAB_READ]);
+    expect(glabCalls(result.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
     expect(ghCalls(result.bin)).toEqual([]);
   });
 
@@ -963,6 +1384,225 @@ describe("kerpeten review --dry-run --mr: the platform of the repository", () =>
     expect(result.code).toBe(ExitCode.USAGE);
     expect(result.err).toContain("/platform");
     expect(glabCalls(result.bin)).toEqual([]);
+    expect(result.calls.length).toBe(0);
+  });
+});
+
+describe("kerpeten review --dry-run --mr on a GitLab repository: the comment plan", () => {
+  test("a merge request without discussions gets the plan of a first review, read with one more call of glab", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+    const answers = { [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) } };
+
+    const text = await run(dir, ["review", "--dry-run", "--mr", "12"], answers, {
+      cli: "glab",
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(text.code).toBe(ExitCode.OK);
+
+    expect(text.out.split("\n").slice(2, 6)).toEqual([
+      "findings: 1",
+      "comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored",
+      "- src/a.ts:2-2 [bug] Division by zero",
+      "  verdict verified, priority P0, nature critical, fix_effort easy, score 95, action inline",
+    ]);
+
+    expect(text.err).toContain('"merge request comments read" command=review kerpeten_line=0 kerpeten_summary=0');
+    expect(glabCalls(text.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
+    expect(ghCalls(text.bin)).toEqual([]);
+
+    const json = await run(dir, ["review", "--dry-run", "--mr", "12", "--json"], answers, {
+      cli: "glab",
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(JSON.parse(json.out).comment_plan).toEqual({
+      line_comments: [
+        {
+          file: "src/a.ts",
+          start_line: 2,
+          end_line: 2,
+          body: [
+            "**Division by zero** · bug · P0",
+            "",
+            "y can be 0",
+            "",
+            "**Fix:** Throw when y is 0.",
+            "",
+            NOTE,
+            `<!-- kerpeten:finding v1 head=${head} file=c3JjL2EudHM lines=2-2 -->`,
+          ].join("\n"),
+        },
+      ],
+      summary: {
+        body: [
+          "## Kerpeten review",
+          `Reviewed commit ${head}. Line comments in this run: 1.`,
+          `<!-- kerpeten:summary v1 head=${head} -->`,
+        ].join("\n\n"),
+      },
+    });
+  });
+
+  test("a note in the diff that ends with Kerpeten's marker makes the finding already written, by the marker alone and not by where GitLab says the note sits", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+    const elsewhere = position({ new_path: "other.ts", old_path: "other.ts", new_line: 7, head_sha: SHA_C });
+
+    const answers = {
+      [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) },
+      [DISCUSSIONS]: {
+        stdout: jsonLines(
+          discussion("d1", note(101, { body: "Why now?" })),
+          discussion(
+            "d2",
+            note(102, {
+              type: "DiffNote",
+              body: `**Division by zero** · bug · P0\n\n${NOTE}\n${marker}`,
+              position: elsewhere,
+            }),
+            note(103, { type: "DiffNote", body: "Agreed.", position: elsewhere }),
+          ),
+          discussion("d3", note(104, { body: `## Kerpeten review\n\n${CommentMarker.summary(head).line()}` })),
+        ),
+      },
+    };
+
+    const text = await run(dir, ["review", "--dry-run", "--mr", "12"], answers, {
+      cli: "glab",
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(text.code).toBe(ExitCode.OK);
+    expect(text.out).toContain("comment plan: 0 line comments, 0 in the summary, 1 already written, 0 stored");
+    expect(text.out).toContain("score 95, action suppressed_duplicate");
+    expect(text.err).toContain('"merge request comments read" command=review kerpeten_line=1 kerpeten_summary=1');
+    expect(ghCalls(text.bin)).toEqual([]);
+
+    const json = await run(dir, ["review", "--dry-run", "--mr", "12", "--json"], answers, {
+      cli: "glab",
+      judgeScript: JUDGED_HIGH,
+    });
+
+    const printed = JSON.parse(json.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["suppressed_duplicate"]);
+    expect(printed.comment_plan.line_comments).toEqual([]);
+
+    expect(printed.comment_plan.summary.body).toBe(
+      [
+        "## Kerpeten review",
+        `Reviewed commit ${head}. Line comments in this run: 0. Findings that already had a line comment: 1.`,
+        `<!-- kerpeten:summary v1 head=${head} -->`,
+      ].join("\n\n"),
+    );
+  });
+
+  test("the marker in a note outside the diff, a marker for another commit, and a note on the finding's own line without a marker write nothing off", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+    const onTheLine = position({ new_line: 2, head_sha: head, base_sha: base });
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) },
+        [DISCUSSIONS]: {
+          stdout: jsonLines(
+            discussion("d1", note(101, { body: `Quoted in the conversation.\n${marker}` })),
+            discussion("d2", note(102, { type: "DiffNote", body: "y can be 0, I think.", position: onTheLine })),
+            discussion(
+              "d3",
+              note(103, {
+                type: "DiffNote",
+                body: `Earlier.\n${CommentMarker.finding(SHA_C, "src/a.ts", 2, 2).line()}`,
+                position: onTheLine,
+              }),
+            ),
+            discussion("d4", note(104, { type: "DiffNote", body: `${marker}\nand I go on.`, position: onTheLine })),
+          ),
+        },
+      },
+      { cli: "glab", judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored");
+    expect(result.err).toContain('"merge request comments read" command=review kerpeten_line=1 kerpeten_summary=0');
+  });
+
+  test("discussions that could not all be read stop the review with exit code 1 and the reason, in GitLab's words, before any model call", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) },
+        [DISCUSSIONS]: {
+          stdout: `${jsonLines(discussion("d1", note(101)))}{"id":"d2","notes":[{"id":102,"bo`,
+          stderr: "glab: 502 Bad Gateway (HTTP 502)\n",
+          exitCode: 1,
+        },
+      },
+      { cli: "glab", judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.FAILED);
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: the comments of the merge request could not all be read, so the review cannot tell which findings are already written: projects/acme%2Fshop/merge_requests/12/discussions: glab api failed (exit 1): glab: 502 Bad Gateway (HTTP 502)",
+    );
+
+    expect(result.out).toBe("");
+    expect(result.calls.length).toBe(0);
+    expect(glabCalls(result.bin)).toEqual([GLAB_READ, GLAB_DISCUSSIONS]);
+    expect(ghCalls(result.bin)).toEqual([]);
+
+    const garbled = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) },
+        [DISCUSSIONS]: { stdout: `${jsonLines(discussion("d1", note(101)), { id: 7 })}<html>busy</html>` },
+      },
+      { cli: "glab", judgeScript: JUDGED_HIGH },
+    );
+
+    expect(garbled.code).toBe(ExitCode.FAILED);
+
+    expect(garbled.err).toContain(
+      "the comments of the merge request could not all be read, so the review cannot tell which findings are already written: projects/acme%2Fshop/merge_requests/12/discussions: the answer of glab is not the lines of entries it should be; projects/acme%2Fshop/merge_requests/12/discussions: 1 of 2 entries cannot be read",
+    );
+
+    expect(garbled.calls.length).toBe(0);
+  });
+
+  test("a sign-in GitLab no longer accepts when the discussions are read is a usage error, before any model call", async () => {
+    const { dir, base, head } = repo(GITLAB_ORIGIN);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [MERGE_REQUEST]: { stdout: mergeRequestJson({ sha: head, baseSha: base }) },
+        [DISCUSSIONS]: {
+          exitCode: 1,
+          stderr: "glab: 401 Unauthorized (HTTP 401)\n",
+          stdout: '{"message":"401 Unauthorized"}',
+        },
+      },
+      { cli: "glab" },
+    );
+
+    expect(result.code).toBe(ExitCode.USAGE);
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: GitLab at gitlab.com did not accept the sign-in of glab (HTTP 401): run",
+    );
+
+    expect(result.out).toBe("");
     expect(result.calls.length).toBe(0);
   });
 });

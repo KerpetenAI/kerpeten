@@ -138,6 +138,19 @@ describe("diff", () => {
     expect(full.patch).toContain("Binary files /dev/null and b/bin.dat differ");
   });
 
+  test("the sections of a patch are its files in order, each with its path, and together the whole patch", async () => {
+    const full = await (await diff(repo)).between(base, head);
+    const sections = GitDiff.sections(full.patch);
+
+    expect(sections.map((section) => section.path).sort()).toEqual(GitDiff.changedPaths(full.files));
+    expect(sections.map((section) => section.path)).toContain("new name.ts");
+    expect(sections.map((section) => section.path)).toContain("gone.ts");
+    expect(sections.map((section) => section.path)).toContain('naïve "q".ts');
+    expect(sections.every((section) => section.text.startsWith("diff --git "))).toBe(true);
+    expect(sections.map((section) => section.text).join("")).toBe(full.patch);
+    expect(GitDiff.sections("")).toEqual([]);
+  });
+
   test("returns an empty patch when every file is ignored", async () => {
     const result = await (await diff(repo)).between(base, head, ["**"]);
 

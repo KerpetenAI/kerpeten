@@ -1,13 +1,16 @@
 import { Inject, Service } from "@asenajs/ioc";
 import { type KitInstances, KitNames } from "../../harness-kit/index.ts";
 import { CandidateFilter } from "../../harnesses/review/CandidateFilter.ts";
-import type { JudgedFinding } from "../../harnesses/review/types/review.ts";
 import type { UsageEntry } from "../../harnesses/types/harnesses.ts";
+import type { CommentPlan, PlannedFinding } from "../../layer/comment/types/comment.ts";
 import { safeJson, terminalLine } from "../../text/text-utils.ts";
 import type { ReviewedMergeRequest, ReviewResult } from "../review/types/review-workflow.ts";
-import type { MergeRequestJson, ReviewJson } from "./types/review-command.ts";
+import type { CommentPlanJson, MergeRequestJson, ReviewJson } from "./types/review-command.ts";
 
-/** Prints the result of a review on stdout, as text or as JSON. */
+/**
+ * Prints the result of a review on stdout, as text or as JSON. A review of a merge request also shows its comment
+ * plan: one line of counts in the text, and in the JSON the texts of the line comments and of the summary comment.
+ */
 @Service("kerpeten:review-printer")
 export class ReviewPrinter {
   @Inject(KitNames.IO)
@@ -25,13 +28,16 @@ export class ReviewPrinter {
         ? {}
         : { merge_request: ReviewPrinter.mergeRequestFields(result.mergeRequest) }),
       findings: result.findings.map((finding) => ReviewPrinter.outputFields(finding)),
+      ...(result.commentPlan === undefined
+        ? {}
+        : { comment_plan: ReviewPrinter.commentPlanFields(result.commentPlan) }),
       usage: result.usage,
     };
 
     this.io.out(safeJson(output));
   }
 
-  private static outputFields(finding: JudgedFinding): JudgedFinding {
+  private static outputFields(finding: PlannedFinding): PlannedFinding {
     const { file, start_line, end_line, category, title, body, fix, evidence } = finding;
     const reviewer = { file, start_line, end_line, category, title, body, fix, evidence };
 
@@ -57,13 +63,31 @@ export class ReviewPrinter {
     };
   }
 
+  private static commentPlanFields(plan: CommentPlan): CommentPlanJson {
+    return {
+      line_comments: plan.lineComments.map(({ file, startLine, endLine, body }) => ({
+        file,
+        start_line: startLine,
+        end_line: endLine,
+        body,
+      })),
+      summary: { body: plan.summary.body },
+    };
+  }
+
+  private static commentPlanSummary(plan: CommentPlan): string {
+    const { inline, summary, duplicate, stored } = plan.counts;
+
+    return `comment plan: ${inline} line comments, ${summary} in the summary, ${duplicate} already written, ${stored} stored`;
+  }
+
   private static mergeRequestSummary(mergeRequest: ReviewedMergeRequest): string {
     const { tenant, kind, host, projectId, number, title, state } = mergeRequest;
 
     return `merge request: #${number} ${terminalLine(title)} (${state}), ${kind} ${terminalLine(host)}, project ${terminalLine(projectId)}, tenant ${terminalLine(tenant)}`;
   }
 
-  private static judgeSummary(finding: JudgedFinding): string {
+  private static judgeSummary(finding: PlannedFinding): string {
     if ("judge_error" in finding) return `judge_error ${terminalLine(finding.judge_error)}, action ${finding.action}`;
 
     return `verdict ${finding.verdict}, priority ${finding.priority}, nature ${finding.nature}, fix_effort ${finding.fix_effort}, score ${finding.score}, action ${finding.action}`;
@@ -91,6 +115,8 @@ export class ReviewPrinter {
     if (result.judgePartialReason !== undefined) io.out(`judge: PARTIAL (${result.judgePartialReason})`);
 
     io.out(`findings: ${result.findings.length}`);
+
+    if (result.commentPlan !== undefined) io.out(ReviewPrinter.commentPlanSummary(result.commentPlan));
 
     for (const finding of result.findings) {
       io.out(
