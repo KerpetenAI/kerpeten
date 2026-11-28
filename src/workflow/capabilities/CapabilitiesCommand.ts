@@ -1,4 +1,4 @@
-import { type After, ExitCode, Workflow, WorkflowBase } from "../../harness-kit/index.ts";
+import { type After, ExitCode, Workflow, WorkflowBase } from "@kerpetensh/harness-kit";
 import { CapabilityListStep } from "./step/CapabilityListStep.ts";
 
 /** The `capabilities` command: lists what this build can reach and which permissions open it. */

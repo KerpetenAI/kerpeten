@@ -1,5 +1,5 @@
 import { Inject } from "@asenajs/ioc";
-import { type After, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
+import { type After, FlowStep, FlowStepBase } from "@kerpetensh/harness-kit";
 import { CommentableLines } from "../../../layer/comment/CommentableLines.ts";
 import { CommentPlanner } from "../../../layer/comment/CommentPlanner.ts";
 import type { ScoreStep } from "./ScoreStep.ts";

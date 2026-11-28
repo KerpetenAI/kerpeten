@@ -1,6 +1,6 @@
+import { Capability, type ProcessSettings, RunValue } from "@kerpetensh/harness-kit";
 import { GitLabPlatform } from "../../../src/capability/platform/GitLabPlatform.ts";
 import type { PlatformReadLimits } from "../../../src/capability/platform/types/platform.ts";
-import { Capability, type ProcessSettings, RunValue } from "../../../src/harness-kit/index.ts";
 
 /**
  * The GitLab platform whose command and read budget the run's values give, so a test can put a script in the place of

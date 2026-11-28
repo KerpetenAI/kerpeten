@@ -1,6 +1,6 @@
+import { Capability } from "@kerpetensh/harness-kit";
 import { RepoLimits } from "../../src/capability/repo/RepoLimits.ts";
 import { SearchTimer } from "../../src/capability/repo/SearchTimer.ts";
-import { Capability } from "../../src/harness-kit/index.ts";
 
 /** The search timer of a test: the time limit and the clock the test set last, the production ones until it sets any. */
 @Capability({

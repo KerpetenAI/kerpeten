@@ -1,8 +1,8 @@
 import { Inject } from "@asenajs/ioc";
+import { type After, FlowStep, FlowStepBase, type KitInstances, KitNames, Use } from "@kerpetensh/harness-kit";
 import { ConfigFileWriter } from "../../../capability/config/ConfigFileWriter.ts";
 import { ConfigLoader } from "../../../capability/config/ConfigLoader.ts";
 import type { KerpetenConfig, ModelConfig } from "../../../capability/config/types/config.ts";
-import { type After, FlowStep, FlowStepBase, type KitInstances, KitNames, Use } from "../../../harness-kit/index.ts";
 import type { InitAnswers, InitModel } from "../types/init.ts";
 import type { InitQuestionStep } from "./InitQuestionStep.ts";
 

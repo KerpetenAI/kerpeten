@@ -1,5 +1,5 @@
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { readJson } from "../../files/files-utils.ts";
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
 import { issueMessages } from "../../validation/validation-utils.ts";
 import { contextPackSchema } from "./schemas/context-pack-schema.ts";
 import type { ContextFileResult } from "./types/context-pack.ts";

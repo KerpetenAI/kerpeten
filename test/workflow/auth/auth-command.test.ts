@@ -1,8 +1,8 @@
 import { afterAll, afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { ExitCode, Run, RunScope } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../../src/app/KerpetenApp.ts";
-import { ExitCode, Run, RunScope } from "../../../src/harness-kit/index.ts";
 import { tempHome } from "../../capability/chatgpt/chatgpt-utils.ts";
 
 const dirs: string[] = [];

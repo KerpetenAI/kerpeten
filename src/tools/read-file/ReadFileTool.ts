@@ -1,5 +1,5 @@
+import { Tool, ToolError } from "@kerpetensh/harness-kit";
 import { RepoLimits } from "../../capability/repo/RepoLimits.ts";
-import { Tool, ToolError } from "../../harness-kit/index.ts";
 import { LineSplitter } from "../../text/LineSplitter.ts";
 import { RepoTool } from "../RepoTool.ts";
 import { ToolLimits } from "../ToolLimits.ts";

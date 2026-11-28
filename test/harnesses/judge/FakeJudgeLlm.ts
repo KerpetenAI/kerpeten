@@ -1,4 +1,4 @@
-import type { LlmSession, SessionInput } from "../../../src/harness-kit/index.ts";
+import type { LlmSession, SessionInput } from "@kerpetensh/harness-kit";
 import type { ProviderLlm } from "../../../src/harnesses/types/harnesses.ts";
 import type { FakeJudgeAnswer } from "../types/harnesses.ts";
 import { FakeJudgeSession } from "./FakeJudgeSession.ts";

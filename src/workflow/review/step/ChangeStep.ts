@@ -1,4 +1,5 @@
 import { Inject } from "@asenajs/ioc";
+import { type After, FlowStep, FlowStepBase, Use } from "@kerpetensh/harness-kit";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
 import { ContextPackFile } from "../../../capability/context-pack/ContextPackFile.ts";
@@ -7,7 +8,6 @@ import { Git } from "../../../capability/git/Git.ts";
 import { GitDiff } from "../../../capability/git/GitDiff.ts";
 import { HeadCommit } from "../../../capability/git/HeadCommit.ts";
 import { PlatformWords } from "../../../capability/platform/PlatformWords.ts";
-import { type After, FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
 import { Prompts } from "../../../harnesses/Prompts.ts";
 import { ReviewInputError } from "../../../harnesses/review/ReviewInputError.ts";
 import type { DiscussedFinding } from "../../../harnesses/review/types/review.ts";

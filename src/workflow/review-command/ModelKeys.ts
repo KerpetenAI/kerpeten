@@ -1,10 +1,10 @@
 import { Inject, Service } from "@asenajs/ioc";
+import { UsageError } from "@kerpetensh/harness-kit";
+import { AiSdkAdapter } from "@kerpetensh/harness-kit/ai-sdk";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
 import { ConfigLoader } from "../../capability/config/ConfigLoader.ts";
 import type { KeyModelConfig, ModelConfig } from "../../capability/config/types/config.ts";
-import { AiSdkAdapter } from "../../harness-kit/ai-sdk/index.ts";
-import { UsageError } from "../../harness-kit/index.ts";
 import type { PromptRole } from "../../harnesses/types/harnesses.ts";
 
 /** Finds the API key of a model in the environment, and refuses to send it to an endpoint the user did not trust. */

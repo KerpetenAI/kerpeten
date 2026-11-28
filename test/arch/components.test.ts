@@ -25,9 +25,7 @@ function sources(): readonly [string, string][] {
 }
 
 test("the container's component list holds every class of the program marked as a component, run components included", () => {
-  const marked = sources()
-    .filter(([path]) => !path.startsWith("src/harness-kit/"))
-    .flatMap(([, source]) => markedClasses(source, COMPONENT_DECORATORS));
+  const marked = sources().flatMap(([, source]) => markedClasses(source, COMPONENT_DECORATORS));
 
   expect(KerpetenApp.COMPONENTS.map((component) => component.name)).toEqual(expect.arrayContaining([...marked]));
 });

@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, readlinkSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { Capability, CapabilityBase, OnFlowStart, RunValue, Use } from "@kerpetensh/harness-kit";
 import { exists, regularFile } from "../../files/files-utils.ts";
-import { Capability, CapabilityBase, OnFlowStart, RunValue, Use } from "../../harness-kit/index.ts";
 import { Git } from "../git/Git.ts";
 import { HeadCommit } from "../git/HeadCommit.ts";
 import type { Jail, JailIndex, JailResult, TrackedSets } from "./types/repo.ts";

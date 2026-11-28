@@ -1,8 +1,8 @@
 import { closeSync, fsyncSync, openSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { exists } from "../../files/files-utils.ts";
 import type { ErrnoLike } from "../../files/types/files.ts";
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
 import { ConfigLoader } from "./ConfigLoader.ts";
 
 /**

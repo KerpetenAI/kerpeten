@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { capabilitySpec, HarnessWiring, harnessSpec } from "@kerpetensh/harness-kit";
 import { ConfigFileWriter } from "../../src/capability/config/ConfigFileWriter.ts";
-import { capabilitySpec, HarnessWiring, harnessSpec } from "../../src/harness-kit/index.ts";
 import { Harnesses } from "../../src/harnesses/Harnesses.ts";
 
 const root = join(import.meta.dir, "..", "..");

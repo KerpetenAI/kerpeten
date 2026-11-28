@@ -1,4 +1,4 @@
-import { Harness } from "../../src/harness-kit/index.ts";
+import { Harness } from "@kerpetensh/harness-kit";
 import { ReviewerHarness } from "../../src/harnesses/review/ReviewerHarness.ts";
 import { GrepTool } from "../../src/tools/grep/GrepTool.ts";
 

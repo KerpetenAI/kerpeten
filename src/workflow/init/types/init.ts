@@ -1,5 +1,5 @@
+import type { ChatGptModel } from "@kerpetensh/harness-kit/ai-sdk";
 import type { ModelConfig } from "../../../capability/config/types/config.ts";
-import type { ChatGptModel } from "../../../harness-kit/ai-sdk/index.ts";
 
 export type InitProvider = ModelConfig["provider"];
 

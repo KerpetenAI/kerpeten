@@ -1,5 +1,5 @@
 import { Inject, Service } from "@asenajs/ioc";
-import { type KitInstances, KitNames } from "../../harness-kit/index.ts";
+import { type KitInstances, KitNames } from "@kerpetensh/harness-kit";
 import { CandidateFilter } from "../../harnesses/review/CandidateFilter.ts";
 import type { UsageEntry } from "../../harnesses/types/harnesses.ts";
 import type { CommentPlan, PlannedFinding } from "../../layer/comment/types/comment.ts";

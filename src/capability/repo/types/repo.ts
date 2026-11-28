@@ -1,4 +1,4 @@
-import type { ProcessOutcome } from "../../../harness-kit/index.ts";
+import type { ProcessOutcome } from "@kerpetensh/harness-kit";
 
 export type JailResult =
   | { readonly ok: true; readonly absolute: string; readonly relative: string }

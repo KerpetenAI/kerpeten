@@ -1,4 +1,4 @@
-import { Context, ContextBase, contextSpec } from "../../harness-kit/index.ts";
+import { Context, ContextBase, contextSpec } from "@kerpetensh/harness-kit";
 import { LineSplitter } from "../../text/LineSplitter.ts";
 import { cut, shortLine } from "../../text/text-utils.ts";
 import type { DiscussedFinding, ListBlock, ReviewerContextSpec, ReviewerRequest, RuleFile } from "./types/review.ts";

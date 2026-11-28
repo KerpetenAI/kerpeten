@@ -1,4 +1,4 @@
-import { RunService, Use } from "../../harness-kit/index.ts";
+import { RunService, Use } from "@kerpetensh/harness-kit";
 import { Git } from "../git/Git.ts";
 import { PlatformError } from "./PlatformError.ts";
 import { RemoteProject } from "./RemoteProject.ts";

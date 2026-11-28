@@ -1,5 +1,12 @@
-import { Capability, ProcessCapability, type ProcessSettings, RunValue } from "../../harness-kit/index.ts";
+import {
+  Capability,
+  ProcessCapability,
+  type ProcessSettings,
+  ProcessTimeoutError,
+  RunValue,
+} from "@kerpetensh/harness-kit";
 import { GitError } from "./GitError.ts";
+import { GitTimeoutError } from "./GitTimeoutError.ts";
 import type { BlobResult, GitResult } from "./types/git.ts";
 
 @Capability({
@@ -20,6 +27,13 @@ export class Git extends ProcessCapability {
     "-c",
     "diff.suppressBlankEmpty=false",
   ];
+
+  /**
+   * The longest one git command may take. Every command Kerpeten runs reads the local repository, which two minutes
+   * cover many times over; a git that takes longer is stuck, and the user hears of it sooner than after the five
+   * minutes a started program gets at most.
+   */
+  public static readonly READ_MS = 120_000;
 
   private static readonly REV = /^[A-Za-z0-9][A-Za-z0-9._/@{}^~+-]*$/;
 
@@ -46,8 +60,25 @@ export class Git extends ProcessCapability {
     return { command: "git", fixedArgs: Git.FIXED_OPTIONS, cwd: this.repo, env: "inherit" };
   }
 
+  /** The time one git command gets; a test gives a shorter one. */
+  protected readMs(): number {
+    return Git.READ_MS;
+  }
+
+  /**
+   * Runs git with `args` to its end. A git that does not finish within `readMs` is stopped and a `GitTimeoutError`
+   * is thrown.
+   */
   public async run(args: readonly string[]): Promise<GitResult> {
-    return this.collect(args);
+    const ms = this.readMs();
+
+    try {
+      return await this.collect(args, ms);
+    } catch (error) {
+      if (error instanceof ProcessTimeoutError) throw new GitTimeoutError(args, ms);
+
+      throw error;
+    }
   }
 
   public async output(args: readonly string[]): Promise<Buffer> {
@@ -58,14 +89,16 @@ export class Git extends ProcessCapability {
     return result.stdout;
   }
 
-  public async text(args: readonly string[]): Promise<string> {
+  public async outputText(args: readonly string[]): Promise<string> {
     return (await this.output(args)).toString("utf8");
   }
 
   public async resolveCommit(rev: string): Promise<string> {
     Git.assertRevision(rev);
 
-    const out = (await this.text(["rev-parse", "--verify", "--quiet", "--end-of-options", `${rev}^{commit}`])).trim();
+    const out = (
+      await this.outputText(["rev-parse", "--verify", "--quiet", "--end-of-options", `${rev}^{commit}`])
+    ).trim();
 
     if (!Git.isSha(out)) throw new Error(`${rev} does not resolve to a commit`);
 
@@ -144,7 +177,7 @@ export class Git extends ProcessCapability {
   public async commitMessages(base: string, head: string, max = 50): Promise<string> {
     if (!Git.isSha(base) || !Git.isSha(head)) throw new Error("commitMessages takes commit ids");
 
-    const out = await this.text([
+    const out = await this.outputText([
       "log",
       `--max-count=${max}`,
       "--format=%B%x00",
@@ -162,7 +195,7 @@ export class Git extends ProcessCapability {
   }
 
   public async changedTrackedFiles(): Promise<string[]> {
-    const out = await this.text([
+    const out = await this.outputText([
       "status",
       "--porcelain=v1",
       "-z",
@@ -181,7 +214,7 @@ export class Git extends ProcessCapability {
   public async trackedFiles(commit: string): Promise<string[]> {
     if (!Git.isSha(commit)) throw new Error("trackedFiles takes a commit id");
 
-    const out = await this.text(["ls-tree", "-r", "-z", "--full-tree", "--end-of-options", commit]);
+    const out = await this.outputText(["ls-tree", "-r", "-z", "--full-tree", "--end-of-options", commit]);
     const files: string[] = [];
 
     for (const record of out.split("\0")) {
@@ -203,7 +236,7 @@ export class Git extends ProcessCapability {
 
     if (type.exitCode !== 0 || type.stdout.toString("utf8").trim() !== "blob") return { kind: "missing" };
 
-    const size = Number((await this.text(["cat-file", "-s", "--end-of-options", spec])).trim());
+    const size = Number((await this.outputText(["cat-file", "-s", "--end-of-options", spec])).trim());
 
     if (!Number.isSafeInteger(size) || size > maxBytes) return { kind: "too_large" };
 

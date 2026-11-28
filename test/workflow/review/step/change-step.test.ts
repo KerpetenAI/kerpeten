@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { RunScope, WorkflowEnd } from "@kerpetensh/harness-kit";
 import { RepoJail } from "../../../../src/capability/repo/RepoJail.ts";
-import { RunScope, WorkflowEnd } from "../../../../src/harness-kit/index.ts";
 import { ChangeStep } from "../../../../src/workflow/review/step/ChangeStep.ts";
 import { openRun, runStep } from "../../../app/app-utils.ts";
 import { commit, tempRepo, write } from "../../../capability/git/git-utils.ts";

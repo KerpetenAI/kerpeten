@@ -1,5 +1,5 @@
 import { Inject } from "@asenajs/ioc";
-import { type After, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
+import { type After, FlowStep, FlowStepBase } from "@kerpetensh/harness-kit";
 import { ReviewPrinter } from "../ReviewPrinter.ts";
 import type { ReviewOutcomeStep } from "./ReviewOutcomeStep.ts";
 

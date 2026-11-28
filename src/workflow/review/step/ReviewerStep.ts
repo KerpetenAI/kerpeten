@@ -1,7 +1,7 @@
 import { Inject } from "@asenajs/ioc";
+import { type After, FlowStep, FlowStepBase, HarnessWiring, Use } from "@kerpetensh/harness-kit";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
-import { type After, FlowStep, FlowStepBase, HarnessWiring, Use } from "../../../harness-kit/index.ts";
 import { deadlines } from "../../../harnesses/harnesses-utils.ts";
 import { ReviewerHarness } from "../../../harnesses/review/ReviewerHarness.ts";
 import { RuleFiles } from "../../../harnesses/review/RuleFiles.ts";

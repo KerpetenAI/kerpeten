@@ -1,8 +1,8 @@
+import { type After, FlowStep, FlowStepBase, Use } from "@kerpetensh/harness-kit";
 import { PlatformChoice } from "../../../capability/platform/PlatformChoice.ts";
 import { PlatformError } from "../../../capability/platform/PlatformError.ts";
 import { PlatformWords } from "../../../capability/platform/PlatformWords.ts";
 import type { PlatformComment, PlatformComments } from "../../../capability/platform/types/platform.ts";
-import { type After, FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
 import { CommentMarker } from "../../../layer/comment/CommentMarker.ts";
 import type { WrittenComment } from "../../../layer/comment/types/comment.ts";
 import { terminalLine } from "../../../text/text-utils.ts";

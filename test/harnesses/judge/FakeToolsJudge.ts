@@ -1,4 +1,4 @@
-import { Harness } from "../../../src/harness-kit/index.ts";
+import { Harness } from "@kerpetensh/harness-kit";
 import { JudgeHarness } from "../../../src/harnesses/judge/JudgeHarness.ts";
 import { FakeReadFileTool } from "../FakeReadFileTool.ts";
 

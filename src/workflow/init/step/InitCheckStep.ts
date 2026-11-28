@@ -1,4 +1,5 @@
 import { Inject } from "@asenajs/ioc";
+import { type After, FlowStep, FlowStepBase, type KitInstances, KitNames } from "@kerpetensh/harness-kit";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
 import { ChatGptAuthFile } from "../../../capability/chatgpt/ChatGptAuthFile.ts";
@@ -7,7 +8,6 @@ import { ChatGptPlan } from "../../../capability/chatgpt/ChatGptPlan.ts";
 import { ConfigLoader } from "../../../capability/config/ConfigLoader.ts";
 import type { KerpetenConfig } from "../../../capability/config/types/config.ts";
 import { RipgrepSearch } from "../../../capability/repo/RipgrepSearch.ts";
-import { type After, FlowStep, FlowStepBase, type KitInstances, KitNames } from "../../../harness-kit/index.ts";
 import type { PromptRole } from "../../../harnesses/types/harnesses.ts";
 import { terminalLine } from "../../../text/text-utils.ts";
 import { ModelKeys } from "../../review-command/ModelKeys.ts";

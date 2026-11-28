@@ -1,8 +1,8 @@
 import type { webcrypto } from "node:crypto";
 import { Inject } from "@asenajs/ioc";
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
 import { ChatGptAuthError } from "./ChatGptAuthError.ts";
 import { decodeBase64Url, jsonPart } from "./chatgpt-utils.ts";
 import {

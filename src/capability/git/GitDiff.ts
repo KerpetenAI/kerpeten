@@ -1,4 +1,4 @@
-import { Capability, CapabilityBase, Use } from "../../harness-kit/index.ts";
+import { Capability, CapabilityBase, Use } from "@kerpetensh/harness-kit";
 import { Git } from "./Git.ts";
 import type { ChangedFile, ChangeStatus, DiffResult, PatchSection } from "./types/git.ts";
 
@@ -53,7 +53,7 @@ export class GitDiff extends CapabilityBase {
     Git.assertRevision(base);
     Git.assertRevision(head);
 
-    const names = await this.git.text([
+    const names = await this.git.outputText([
       "diff",
       ...GitDiff.DIFF_OPTIONS,
       "--name-status",
@@ -64,7 +64,15 @@ export class GitDiff extends CapabilityBase {
       "--",
     ]);
 
-    const fullPatch = await this.git.text(["diff", ...GitDiff.DIFF_OPTIONS, "--end-of-options", base, head, "--"]);
+    const fullPatch = await this.git.outputText([
+      "diff",
+      ...GitDiff.DIFF_OPTIONS,
+      "--end-of-options",
+      base,
+      head,
+      "--",
+    ]);
+
     const files = GitDiff.applyIgnore(GitDiff.parseNameStatus(names), ignore);
     const kept = new Set(files.map((file) => file.path));
     const patch = GitDiff.filterPatch(fullPatch, (path) => kept.has(path));

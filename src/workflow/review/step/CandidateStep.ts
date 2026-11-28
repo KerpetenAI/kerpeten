@@ -1,4 +1,4 @@
-import { type After, FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
+import { type After, FlowStep, FlowStepBase, Use } from "@kerpetensh/harness-kit";
 import { CandidateFilter } from "../../../harnesses/review/CandidateFilter.ts";
 import type { ReviewerStep } from "./ReviewerStep.ts";
 

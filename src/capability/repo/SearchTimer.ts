@@ -1,4 +1,4 @@
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { RepoLimits } from "./RepoLimits.ts";
 
 /**

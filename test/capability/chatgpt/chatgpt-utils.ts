@@ -9,7 +9,7 @@ import { ChatGptOAuth } from "../../../src/capability/chatgpt/ChatGptOAuth.ts";
 import { ChatGptPlan } from "../../../src/capability/chatgpt/ChatGptPlan.ts";
 import { ChatGptSignIn } from "../../../src/capability/chatgpt/ChatGptSignIn.ts";
 import { ChatGptTokens } from "../../../src/capability/chatgpt/ChatGptTokens.ts";
-import { quietLogger } from "../../harness-kit/harness-kit-utils.ts";
+import { quietLogger } from "../../test-utils.ts";
 import type { FakeChatGpt } from "./FakeChatGpt.ts";
 import type { BrowseOptions, ChatGptParts } from "./types/fake.ts";
 

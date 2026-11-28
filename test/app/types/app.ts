@@ -1,5 +1,5 @@
 import type { Class } from "@asenajs/ioc";
-import type { PermissionGrant, Run } from "../../../src/harness-kit/index.ts";
+import type { PermissionGrant, Run } from "@kerpetensh/harness-kit";
 
 /**
  * How `openRun` opens a test run: its grant, every permission when left out; the components of its container, the

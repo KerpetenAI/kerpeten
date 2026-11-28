@@ -2,13 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PermissionGroupSet, Run } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../../src/app/KerpetenApp.ts";
 import { GitLabPlatform } from "../../../src/capability/platform/GitLabPlatform.ts";
 import { JsonLines } from "../../../src/capability/platform/JsonLines.ts";
 import { PlatformError } from "../../../src/capability/platform/PlatformError.ts";
 import { PlatformLimits } from "../../../src/capability/platform/PlatformLimits.ts";
 import type { PlatformFailure, PlatformReadLimits } from "../../../src/capability/platform/types/platform.ts";
-import { PermissionGroupSet, Run } from "../../../src/harness-kit/index.ts";
 import { runComponent } from "../../app/app-utils.ts";
 import { sh } from "../git/git-utils.ts";
 import {

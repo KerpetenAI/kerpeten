@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { typeErrors } from "../harness-kit/harness-kit-utils.ts";
+import { typeErrors } from "../test-utils.ts";
 
 test("tsc catches a named value injected or registered under a wrong name or with a wrong type", async () => {
   const head = [

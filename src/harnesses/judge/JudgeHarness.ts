@@ -1,5 +1,5 @@
 import { Inject } from "@asenajs/ioc";
-import { Harness, HarnessBase, type HarnessRun, type PartialReason, UsageTally } from "../../harness-kit/index.ts";
+import { Harness, HarnessBase, type HarnessRun, type PartialReason, UsageTally } from "@kerpetensh/harness-kit";
 import { errorMessage } from "../../text/text-utils.ts";
 import { GlobTool } from "../../tools/glob/GlobTool.ts";
 import { GrepTool } from "../../tools/grep/GrepTool.ts";

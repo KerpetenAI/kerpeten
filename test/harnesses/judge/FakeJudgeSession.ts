@@ -1,11 +1,5 @@
+import type { CallUsage, FinalizeOutcome, LlmSession, ToolPhaseHooks, ToolPhaseOutcome } from "@kerpetensh/harness-kit";
 import type { z } from "zod";
-import type {
-  CallUsage,
-  FinalizeOutcome,
-  LlmSession,
-  ToolPhaseHooks,
-  ToolPhaseOutcome,
-} from "../../../src/harness-kit/index.ts";
 import type { FakeJudgeAnswer } from "../types/harnesses.ts";
 import type { FakeJudgeLlm } from "./FakeJudgeLlm.ts";
 

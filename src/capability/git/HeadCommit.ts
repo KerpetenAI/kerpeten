@@ -1,5 +1,5 @@
 import { OnStart } from "@asenajs/ioc";
-import { RunService, Use } from "../../harness-kit/index.ts";
+import { RunService, Use } from "@kerpetensh/harness-kit";
 import { Git } from "./Git.ts";
 
 /**

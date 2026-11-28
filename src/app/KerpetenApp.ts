@@ -1,4 +1,6 @@
 import type { Class } from "@asenajs/ioc";
+import { cliSpec, ExitCode, HarnessApplication } from "@kerpetensh/harness-kit";
+import { AiSdkAdapter } from "@kerpetensh/harness-kit/ai-sdk";
 import { ChatGptAuthFile } from "../capability/chatgpt/ChatGptAuthFile.ts";
 import { ChatGptOAuth } from "../capability/chatgpt/ChatGptOAuth.ts";
 import { ChatGptPlan } from "../capability/chatgpt/ChatGptPlan.ts";
@@ -23,8 +25,6 @@ import { SearchTimer } from "../capability/repo/SearchTimer.ts";
 import { AnswerReader } from "../capability/stdin/AnswerReader.ts";
 import { Cli } from "../cli/Cli.ts";
 import type { CliOptions } from "../cli/types/cli.ts";
-import { AiSdkAdapter } from "../harness-kit/ai-sdk/index.ts";
-import { cliSpec, ExitCode, HarnessApplication } from "../harness-kit/index.ts";
 import { Harnesses } from "../harnesses/Harnesses.ts";
 import { JudgePool } from "../harnesses/judge/JudgePool.ts";
 import { Prompts } from "../harnesses/Prompts.ts";

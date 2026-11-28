@@ -5,7 +5,7 @@ import {
   PermissionGroupError,
   Workflow,
   WorkflowBase,
-} from "../../harness-kit/index.ts";
+} from "@kerpetensh/harness-kit";
 import { deadlines } from "../../harnesses/harnesses-utils.ts";
 import { ReviewInputError } from "../../harnesses/review/ReviewInputError.ts";
 import type { Deadlines } from "../../harnesses/types/harnesses.ts";

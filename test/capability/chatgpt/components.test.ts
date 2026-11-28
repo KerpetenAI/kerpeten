@@ -6,7 +6,7 @@ import { ChatGptOAuth } from "../../../src/capability/chatgpt/ChatGptOAuth.ts";
 import { ChatGptPlan } from "../../../src/capability/chatgpt/ChatGptPlan.ts";
 import { ChatGptSignIn } from "../../../src/capability/chatgpt/ChatGptSignIn.ts";
 import { ChatGptTokens } from "../../../src/capability/chatgpt/ChatGptTokens.ts";
-import { quietLogger } from "../../harness-kit/harness-kit-utils.ts";
+import { quietLogger } from "../../test-utils.ts";
 
 describe("the ChatGPT components", () => {
   test("start without a usable environment and find the sign-in file only when it is first used", async () => {

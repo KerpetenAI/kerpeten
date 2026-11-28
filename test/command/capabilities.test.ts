@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CapabilityRegistry, type CapabilitySpec, ExitCode } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
-import { CapabilityRegistry, type CapabilitySpec, ExitCode } from "../../src/harness-kit/index.ts";
 
 const root = join(import.meta.dir, "..", "..");
 
@@ -91,9 +91,9 @@ describe("capabilities", () => {
   });
 
   test("the kit lists every class of the project marked with @Capability, from the container", async () => {
-    const marked = [...new Bun.Glob("src/**/*.ts").scanSync({ cwd: root })]
-      .filter((path) => !path.startsWith("src/harness-kit/"))
-      .filter((path) => /^@Capability\(/m.test(readFileSync(join(root, path), "utf8")));
+    const marked = [...new Bun.Glob("src/**/*.ts").scanSync({ cwd: root })].filter((path) =>
+      /^@Capability\(/m.test(readFileSync(join(root, path), "utf8")),
+    );
 
     expect(marked.length).toBe(16);
     expect((await registered()).length).toBe(marked.length);

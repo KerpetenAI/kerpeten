@@ -1,7 +1,7 @@
 import { type Class, IocApplication } from "@asenajs/ioc";
 import { Prompts } from "../../src/harnesses/Prompts.ts";
 import { Logger } from "../../src/log/Logger.ts";
-import { quietLogger } from "../harness-kit/harness-kit-utils.ts";
+import { quietLogger } from "../test-utils.ts";
 import { CapturingLogger } from "./CapturingLogger.ts";
 import type { CapturedLine } from "./types/harnesses.ts";
 

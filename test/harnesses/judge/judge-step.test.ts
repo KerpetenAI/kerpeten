@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { type HarnessLogger, RunScope } from "../../../src/harness-kit/index.ts";
+import { type HarnessLogger, RunScope } from "@kerpetensh/harness-kit";
 import { JudgeHarness } from "../../../src/harnesses/judge/JudgeHarness.ts";
 import { JudgePool } from "../../../src/harnesses/judge/JudgePool.ts";
 import type { JudgeOutput, JudgeStepLimits, JudgeStepOptions } from "../../../src/harnesses/judge/types/judge.ts";
 import type { ReviewerFinding } from "../../../src/harnesses/review/types/review.ts";
-import { noRun } from "../../harness-kit/harness-kit-utils.ts";
+import { noRun } from "../../test-utils.ts";
 import { capturingLogger, component, log } from "../harnesses-utils.ts";
 import type { FakeJudgeAnswer } from "../types/harnesses.ts";
 import { FakeJudgeLlm } from "./FakeJudgeLlm.ts";

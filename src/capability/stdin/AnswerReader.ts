@@ -1,7 +1,7 @@
 import { Inject } from "@asenajs/ioc";
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
 import { LineSplitter } from "../../text/LineSplitter.ts";
 import { errorMessage } from "../../text/text-utils.ts";
 import type { SplitLine } from "../../text/types/text.ts";

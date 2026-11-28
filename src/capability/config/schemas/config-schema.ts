@@ -1,6 +1,6 @@
+import type { Effort, KeyProvider } from "@kerpetensh/harness-kit/ai-sdk";
 import { z } from "zod";
 import type { Model } from "../../../api/types/api.generated.ts";
-import type { Effort, KeyProvider } from "../../../harness-kit/ai-sdk/index.ts";
 import { ConfigLoader } from "../ConfigLoader.ts";
 
 const PROVIDERS = ["openrouter", "anthropic", "openai"] as const satisfies readonly (Model["provider"] & KeyProvider)[];

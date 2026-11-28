@@ -1,9 +1,9 @@
 import { Inject } from "@asenajs/ioc";
+import { type KitInstances, KitNames, RunService, Use } from "@kerpetensh/harness-kit";
 import { ChatGptAuthFile } from "../../capability/chatgpt/ChatGptAuthFile.ts";
 import { ChatGptPlan } from "../../capability/chatgpt/ChatGptPlan.ts";
 import { configSchema } from "../../capability/config/schemas/config-schema.ts";
 import { AnswerReader } from "../../capability/stdin/AnswerReader.ts";
-import { type KitInstances, KitNames, RunService, Use } from "../../harness-kit/index.ts";
 import type { PromptRole } from "../../harnesses/types/harnesses.ts";
 import { terminalLine } from "../../text/text-utils.ts";
 import type { InitAnswers, InitModel, InitProvider, Parsed, PlanModelList, ProviderChoice } from "./types/init.ts";

@@ -1,5 +1,5 @@
+import { Context, ContextBase, contextSpec } from "@kerpetensh/harness-kit";
 import { GitDiff } from "../../capability/git/GitDiff.ts";
-import { Context, ContextBase, contextSpec } from "../../harness-kit/index.ts";
 import { cut, shortLine } from "../../text/text-utils.ts";
 import type { ReviewerFinding } from "../review/types/review.ts";
 import type { FileDiff, JudgeContextSpec, JudgeRequest } from "./types/judge.ts";

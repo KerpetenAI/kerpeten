@@ -1,4 +1,4 @@
-import { RunService, RunValue, Use } from "../../harness-kit/index.ts";
+import { RunService, RunValue, Use } from "@kerpetensh/harness-kit";
 import { ConfigLoader } from "../config/ConfigLoader.ts";
 import type { KerpetenConfig } from "../config/types/config.ts";
 import { GitHubPlatform } from "./GitHubPlatform.ts";

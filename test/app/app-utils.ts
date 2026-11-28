@@ -1,7 +1,7 @@
 import type { Class } from "@asenajs/ioc";
+import { PermissionGroupSet, Run, type RunClass, RunScope } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import type { StartedApp } from "../../src/app/types/app.ts";
-import { PermissionGroupSet, Run, type RunClass, RunScope } from "../../src/harness-kit/index.ts";
 import type { TestRunOptions } from "./types/app.ts";
 
 const started = new Map<readonly Class[], Promise<StartedApp>>();

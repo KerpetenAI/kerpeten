@@ -443,11 +443,11 @@ describe("layout rules", () => {
     expect(LayoutRules.kindOf("src/harnesses/types/assets.d.ts")).toBe("declaration");
     expect(LayoutRules.kindOf("test/cli/main.test.ts")).toBe("test");
     expect(LayoutRules.kindOf("test/tools/tools-utils.ts")).toBe("utils");
-    expect(LayoutRules.kindOf("src/harness-kit/Tool.decorator.ts")).toBe("decorator");
-    expect(LayoutRules.kindOf("src/harness-kit/cli/CLI.decorator.ts")).toBe("decorator");
-    expect(LayoutRules.kindOf("src/harness-kit/index.ts")).toBe("barrel");
-    expect(LayoutRules.kindOf("src/harness-kit/harness-kit-utils.ts")).toBe("utils");
-    expect(LayoutRules.kindOf("src/harness-kit/cli/ExitCode.ts")).toBe("class");
+    expect(LayoutRules.kindOf("src/app/Named.decorator.ts")).toBe("decorator");
+    expect(LayoutRules.kindOf("src/capability/git/Bounded.decorator.ts")).toBe("decorator");
+    expect(LayoutRules.kindOf("src/app/index.ts")).toBe("barrel");
+    expect(LayoutRules.kindOf("src/text/text-utils.ts")).toBe("utils");
+    expect(LayoutRules.kindOf("src/cli/Cli.ts")).toBe("class");
     expect(LayoutRules.kindOf("src/config/schemas/config-schema.ts")).toBe("schema");
     expect(LayoutRules.kindOf("src/config/types/config.ts")).toBe("types");
     expect(LayoutRules.kindOf("main.ts")).toBe("unknown");

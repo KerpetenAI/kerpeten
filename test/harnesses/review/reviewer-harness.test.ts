@@ -1,17 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { type CallUsage, contextSpec, UsageTally } from "@kerpetensh/harness-kit";
 import type { Usage } from "../../../src/api/types/api.generated.ts";
-import { type CallUsage, contextSpec, UsageTally } from "../../../src/harness-kit/index.ts";
 import { usageEntry } from "../../../src/harnesses/harnesses-utils.ts";
 import { Prompts } from "../../../src/harnesses/Prompts.ts";
 import { ReviewerContext } from "../../../src/harnesses/review/ReviewerContext.ts";
 import { reviewerOutput } from "../../../src/harnesses/review/schemas/reviewer-output-schema.ts";
 import type { ReviewerFinding, ReviewerRequest } from "../../../src/harnesses/review/types/review.ts";
 import type { Logger } from "../../../src/log/Logger.ts";
-import { limits, mockClient, noRun, promptText } from "../../harness-kit/harness-kit-utils.ts";
+import { limits, mockClient, noRun, promptText } from "../../test-utils.ts";
 import { capturingLogger, component, log } from "../harnesses-utils.ts";
 import { FakeToolsReviewer } from "./FakeToolsReviewer.ts";
+import { HangingToolsReviewer } from "./HangingToolsReviewer.ts";
 
 const reviewerSpec = contextSpec(ReviewerContext);
 
@@ -521,6 +522,29 @@ describe("reviewer run", () => {
 
     expect(run).toMatchObject({ partialReason: "tool_call_budget", toolCalls: 1, findings: [finding] });
   });
+
+  test("a tool that does not end holds the review no longer than its time limit, and the review is partial", async () => {
+    const hanging = await component(HangingToolsReviewer, [HangingToolsReviewer]);
+
+    const mock = mockClient([
+      { toolCalls: [{ name: "wait_forever", input: {} }] },
+      { text: JSON.stringify({ findings: [finding] }) },
+    ]);
+
+    const start = Date.now();
+
+    const run = await hanging.review(request, {
+      llm: mock.client,
+      run: noRun(),
+      limits: limits({ stepDeadline: start + 60, finalizeDeadline: start + 60_000 }),
+      now: Date.now,
+      log,
+    });
+
+    expect(Date.now() - start).toBeLessThan(2_000);
+    expect(run).toMatchObject({ partialReason: "time_budget", toolCalls: 1, findings: [finding] });
+    expect(promptText(mock.calls[1])).toContain("wait_forever did not finish before the time limit");
+  }, 5_000);
 });
 
 describe("usage summary", () => {

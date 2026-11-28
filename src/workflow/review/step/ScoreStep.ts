@@ -1,5 +1,5 @@
 import { Inject } from "@asenajs/ioc";
-import { type After, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
+import { type After, FlowStep, FlowStepBase } from "@kerpetensh/harness-kit";
 import type { JudgeOutcome } from "../../../harnesses/judge/types/judge.ts";
 import type { JudgedFinding, ReviewerFinding } from "../../../harnesses/review/types/review.ts";
 import { Scorer } from "../../../layer/scoring/Scorer.ts";

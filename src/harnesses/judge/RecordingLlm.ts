@@ -1,4 +1,4 @@
-import type { SessionInput } from "../../harness-kit/index.ts";
+import type { SessionInput } from "@kerpetensh/harness-kit";
 import type { ProviderLlm } from "../types/harnesses.ts";
 import { RecordingSession } from "./RecordingSession.ts";
 

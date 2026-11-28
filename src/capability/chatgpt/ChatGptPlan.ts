@@ -1,7 +1,7 @@
 import { Inject, Service } from "@asenajs/ioc";
+import { ChatGptAdapter, ChatGptError } from "@kerpetensh/harness-kit/ai-sdk";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
-import { ChatGptAdapter, ChatGptError } from "../../harness-kit/ai-sdk/index.ts";
 import { errorMessage } from "../../text/text-utils.ts";
 import { ChatGptAuthError } from "./ChatGptAuthError.ts";
 import { ChatGptTokens } from "./ChatGptTokens.ts";

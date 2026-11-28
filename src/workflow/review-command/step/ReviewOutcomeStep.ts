@@ -1,4 +1,4 @@
-import { type After, ExitCode, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
+import { type After, ExitCode, FlowStep, FlowStepBase } from "@kerpetensh/harness-kit";
 import { terminalLine } from "../../../text/text-utils.ts";
 import type { ReviewResult } from "../../review/types/review-workflow.ts";
 import { planStopMessage } from "../review-command-utils.ts";
