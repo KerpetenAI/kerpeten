@@ -1,9 +1,9 @@
 import { rmSync } from "node:fs";
 import type { Class } from "@asenajs/ioc";
+import { type After, WorkflowEnd } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../../src/app/KerpetenApp.ts";
 import { ConfigLoader } from "../../../src/capability/config/ConfigLoader.ts";
 import type { KerpetenConfig } from "../../../src/capability/config/types/config.ts";
-import { type After, WorkflowEnd } from "../../../src/harness-kit/index.ts";
 import type { JudgeOutput } from "../../../src/harnesses/judge/types/judge.ts";
 import type { ReviewerFinding, ReviewerRun } from "../../../src/harnesses/review/types/review.ts";
 import type { CandidateStep } from "../../../src/workflow/review/step/CandidateStep.ts";
@@ -12,8 +12,8 @@ import type { WrittenCommentStep } from "../../../src/workflow/review/step/Writt
 import type { ReviewInput } from "../../../src/workflow/review/types/review-workflow.ts";
 import { runStep } from "../../app/app-utils.ts";
 import { commit, sh, tempRepo, write } from "../../capability/git/git-utils.ts";
-import { mockClient } from "../../harness-kit/harness-kit-utils.ts";
 import { log } from "../../harnesses/harnesses-utils.ts";
+import { mockClient } from "../../test-utils.ts";
 
 export const dirs: string[] = [];
 

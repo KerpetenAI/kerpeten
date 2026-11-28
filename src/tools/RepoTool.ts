@@ -1,8 +1,8 @@
 import { lstatSync } from "node:fs";
+import { ToolError, Use } from "@kerpetensh/harness-kit";
 import { RepoJail } from "../capability/repo/RepoJail.ts";
 import { RepoLimits } from "../capability/repo/RepoLimits.ts";
 import { regularFile } from "../files/files-utils.ts";
-import { ToolError, Use } from "../harness-kit/index.ts";
 import type { ResolvedPath } from "./types/tools.ts";
 
 export abstract class RepoTool {

@@ -8,7 +8,7 @@ import {
   type KitInstances,
   KitNames,
   PermissionGroupSet,
-} from "../../../harness-kit/index.ts";
+} from "@kerpetensh/harness-kit";
 
 /** Prints the capabilities of this build, the permission groups and the permissions each harness lists. */
 @FlowStep({

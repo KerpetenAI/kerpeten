@@ -1,6 +1,6 @@
+import { Tool, ToolError, Use } from "@kerpetensh/harness-kit";
 import { RepoJail } from "../../capability/repo/RepoJail.ts";
 import { SearchTimer } from "../../capability/repo/SearchTimer.ts";
-import { Tool, ToolError, Use } from "../../harness-kit/index.ts";
 import { RepoTool } from "../RepoTool.ts";
 import { ToolLimits } from "../ToolLimits.ts";
 import { truncationNotice } from "../tools-utils.ts";

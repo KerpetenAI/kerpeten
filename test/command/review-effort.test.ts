@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { realpathSync, rmSync } from "node:fs";
+import type { AiSdkSettings } from "@kerpetensh/harness-kit/ai-sdk";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { ConfigLoader } from "../../src/capability/config/ConfigLoader.ts";
-import type { AiSdkSettings } from "../../src/harness-kit/ai-sdk/index.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
-import { mockClient } from "../harness-kit/harness-kit-utils.ts";
+import { mockClient } from "../test-utils.ts";
 
 const ANSWER = [{ text: "done" }, { text: JSON.stringify({ findings: [] }) }];
 

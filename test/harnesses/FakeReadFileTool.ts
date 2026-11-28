@@ -1,6 +1,6 @@
+import { Tool } from "@kerpetensh/harness-kit";
 import type { z } from "zod";
-import { Tool } from "../../src/harness-kit/index.ts";
-import { readInput } from "../harness-kit/schemas/fake-schema.ts";
+import { readInput } from "./schemas/harnesses-schema.ts";
 
 @Tool({ name: "read_file", description: "read", input: readInput })
 export class FakeReadFileTool {

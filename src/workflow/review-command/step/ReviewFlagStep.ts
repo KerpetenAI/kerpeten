@@ -1,5 +1,5 @@
 import { Inject } from "@asenajs/ioc";
-import { ExitCode, FlowStep, FlowStepBase } from "../../../harness-kit/index.ts";
+import { ExitCode, FlowStep, FlowStepBase } from "@kerpetensh/harness-kit";
 import { Logger } from "../../../log/Logger.ts";
 import type { ReviewFlags } from "../types/review-command.ts";
 

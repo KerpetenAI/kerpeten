@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { rmSync } from "node:fs";
+import { ExitCode } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
-import { ExitCode } from "../../src/harness-kit/index.ts";
 import { plan, signIn, tempHome } from "../capability/chatgpt/chatgpt-utils.ts";
 import { FakeChatGpt } from "../capability/chatgpt/FakeChatGpt.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";

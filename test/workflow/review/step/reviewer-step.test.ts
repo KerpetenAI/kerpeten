@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { PermissionGroups } from "../../../../src/capability/PermissionGroups.ts";
 import { ReviewerStep } from "../../../../src/workflow/review/step/ReviewerStep.ts";
 import { runStep } from "../../../app/app-utils.ts";
-import { mockClient, promptText } from "../../../harness-kit/harness-kit-utils.ts";
 import { capturingLogger } from "../../../harnesses/harnesses-utils.ts";
+import { mockClient, promptText } from "../../../test-utils.ts";
 import { changed, cleanDirs, config, good, repoWithBranch, reviewComponent } from "../review-utils.ts";
 
 afterEach(cleanDirs);

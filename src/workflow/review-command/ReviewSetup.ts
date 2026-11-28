@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { Inject, Service } from "@asenajs/ioc";
+import { UsageError } from "@kerpetensh/harness-kit";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
 import { ChatGptPlan } from "../../capability/chatgpt/ChatGptPlan.ts";
@@ -7,8 +8,8 @@ import { ChatGptTokens } from "../../capability/chatgpt/ChatGptTokens.ts";
 import { ConfigLoader } from "../../capability/config/ConfigLoader.ts";
 import type { ModelConfig } from "../../capability/config/types/config.ts";
 import { GitRoot } from "../../capability/git/GitRoot.ts";
+import { GitTimeoutError } from "../../capability/git/GitTimeoutError.ts";
 import { RipgrepSearch } from "../../capability/repo/RipgrepSearch.ts";
-import { UsageError } from "../../harness-kit/index.ts";
 import type { PromptRole, ProviderLlm } from "../../harnesses/types/harnesses.ts";
 import { errorMessage } from "../../text/text-utils.ts";
 import { ModelKeys } from "./ModelKeys.ts";
@@ -48,6 +49,8 @@ export class ReviewSetup {
     try {
       repo = await this.gitRoot.root();
     } catch (error) {
+      if (error instanceof GitTimeoutError) throw error;
+
       return { ok: false, problems: [errorMessage(error)] };
     }
 

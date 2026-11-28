@@ -2,13 +2,17 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ExitCode, PermissionGroupSet } from "@kerpetensh/harness-kit";
+import type { AiSdkSettings } from "@kerpetensh/harness-kit/ai-sdk";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
+import { Git } from "../../src/capability/git/Git.ts";
+import { GitRoot } from "../../src/capability/git/GitRoot.ts";
 import { PermissionGroups } from "../../src/capability/PermissionGroups.ts";
 import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
-import type { AiSdkSettings } from "../../src/harness-kit/ai-sdk/index.ts";
-import { ExitCode, PermissionGroupSet } from "../../src/harness-kit/index.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
-import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
+import { StuckGit } from "../capability/git/StuckGit.ts";
+import { StuckGitRoot } from "../capability/git/StuckGitRoot.ts";
+import { mockClient, promptText } from "../test-utils.ts";
 
 const SECRET = "sk-test-secret-value-123";
 
@@ -863,6 +867,50 @@ describe("kerpeten review --dry-run", () => {
     expect(result.code).toBe(2);
     expect(result.err).toContain("not inside a git work tree");
   });
+
+  test("a git that does not finish is reported with the error of git, and the review does not start", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "kerpeten-cli-stuck-"));
+    const out: string[] = [];
+    const err: string[] = [];
+
+    dirs.push(dir);
+    writeFileSync(join(dir, "git"), "#!/bin/sh\nexec /bin/sleep 30\n", { mode: 0o755 });
+
+    const code = await KerpetenApp.run(
+      { io: { out: (line) => out.push(line), err: (line) => err.push(line) }, env: {}, cwd: dir, now: () => 0 },
+      ["review", "--dry-run", "--base", "main"],
+      [...KerpetenApp.COMPONENTS.filter((component) => component !== GitRoot), StuckGitRoot],
+    );
+
+    expect(code).toBe(ExitCode.FAILED);
+    expect(err).toEqual(["kerpeten review: git rev-parse did not finish within 0.2 s and was stopped"]);
+    expect(out).toEqual([]);
+  }, 10_000);
+
+  test("a git command of the review that does not finish ends the review with the error of git and exit code 1", async () => {
+    const dir = repo();
+    const out: string[] = [];
+    const err: string[] = [];
+
+    writeFileSync(join(dir, StuckGit.PROGRAM), "#!/bin/sh\nexec /bin/sleep 30\n", { mode: 0o755 });
+
+    const code = await KerpetenApp.run(
+      {
+        io: { out: (line) => out.push(line), err: (line) => err.push(line) },
+        env: { ...TRUSTED, KIMI_API_KEY: SECRET, PATH: process.env.PATH ?? "" },
+        cwd: dir,
+        now: () => 0,
+        createClient: () => mockClient([]).client,
+      },
+      ["review", "--dry-run", "--base", "main"],
+      [...KerpetenApp.COMPONENTS.filter((component) => component !== Git), StuckGit],
+    );
+
+    expect(code).toBe(ExitCode.FAILED);
+    expect(err.at(-1)).toBe("kerpeten review: git rev-parse did not finish within 0.2 s and was stopped");
+    expect(err.join("\n")).not.toContain("    at ");
+    expect(out).toEqual([]);
+  }, 10_000);
 
   test("starts the review with the permission group of the flag", async () => {
     const result = await run(repo(), ["review", "--dry-run", "--base", "main", "--json", "--read"], undefined, [

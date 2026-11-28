@@ -1,13 +1,15 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ExitCode } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { ConfigFileWriter } from "../../src/capability/config/ConfigFileWriter.ts";
 import { ConfigLoader } from "../../src/capability/config/ConfigLoader.ts";
-import { ExitCode } from "../../src/harness-kit/index.ts";
+import { GitRoot } from "../../src/capability/git/GitRoot.ts";
 import { plan, signIn, tempHome } from "../capability/chatgpt/chatgpt-utils.ts";
 import { FakeChatGpt } from "../capability/chatgpt/FakeChatGpt.ts";
 import { tempRepo } from "../capability/git/git-utils.ts";
+import { StuckGitRoot } from "../capability/git/StuckGitRoot.ts";
 import type { CountedStdin, InitResult, InitRun } from "./types/init.ts";
 
 const KEY = "sk-init-test-key-value-7f3a";
@@ -81,6 +83,7 @@ async function init(run: InitRun): Promise<InitResult> {
       stdin: run.stdin,
     },
     ["init"],
+    run.components,
   );
 
   return { code, out: out.join("\n"), err: err.join("\n"), lines: out };
@@ -319,6 +322,25 @@ describe("kerpeten init", () => {
     expect(stdin.opened()).toBe(0);
     expect(existsSync(join(dir, ".kerpeten.yml"))).toBe(false);
   });
+
+  test("a git that does not finish ends it with the error of git, not with advice about the folder, and asks nothing", async () => {
+    const dir = tempHome(dirs);
+    const stdin = answers("2", "claude-test-1", "y", "en");
+
+    writeFileSync(join(dir, "git"), "#!/bin/sh\nexec /bin/sleep 30\n", { mode: 0o755 });
+
+    const result = await init(
+      setup(dir, stdin, {
+        components: [...KerpetenApp.COMPONENTS.filter((component) => component !== GitRoot), StuckGitRoot],
+      }),
+    );
+
+    expect(result.code).toBe(ExitCode.FAILED);
+    expect(result.out).toBe("");
+    expect(result.err).toBe("kerpeten init: git rev-parse did not finish within 0.2 s and was stopped");
+    expect(stdin.opened()).toBe(0);
+    expect(existsSync(join(dir, ".kerpeten.yml"))).toBe(false);
+  }, 10_000);
 
   test("a .kerpeten.yml that appears while the questions are asked is not overwritten and ends init with 1", async () => {
     const dir = repo();

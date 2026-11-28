@@ -1,4 +1,4 @@
-import { type After, ExitCode, Workflow, WorkflowBase } from "../../harness-kit/index.ts";
+import { type After, ExitCode, Workflow, WorkflowBase } from "@kerpetensh/harness-kit";
 import { SelfCheckStep } from "./step/SelfCheckStep.ts";
 
 /** The `self-check` command: checks this build without the network. */

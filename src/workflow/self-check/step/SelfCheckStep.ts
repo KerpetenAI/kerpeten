@@ -1,6 +1,6 @@
 import { Inject } from "@asenajs/ioc";
-import { sdkRoundTrip } from "../../../harness-kit/ai-sdk/index.ts";
-import { ExitCode, FlowStep, FlowStepBase, type KitInstances, KitNames } from "../../../harness-kit/index.ts";
+import { ExitCode, FlowStep, FlowStepBase, type KitInstances, KitNames } from "@kerpetensh/harness-kit";
+import { sdkRoundTrip } from "@kerpetensh/harness-kit/ai-sdk";
 import { Prompts } from "../../../harnesses/Prompts.ts";
 import { errorMessage } from "../../../text/text-utils.ts";
 

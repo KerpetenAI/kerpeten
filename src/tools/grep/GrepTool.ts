@@ -1,7 +1,7 @@
+import { Tool, ToolError, Use } from "@kerpetensh/harness-kit";
 import { RepoLimits } from "../../capability/repo/RepoLimits.ts";
 import { RipgrepSearch } from "../../capability/repo/RipgrepSearch.ts";
 import { regularFile } from "../../files/files-utils.ts";
-import { Tool, ToolError, Use } from "../../harness-kit/index.ts";
 import { firstLine } from "../../text/text-utils.ts";
 import { RepoTool } from "../RepoTool.ts";
 import { truncationNotice } from "../tools-utils.ts";

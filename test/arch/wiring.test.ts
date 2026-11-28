@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { HarnessWiring } from "@kerpetensh/harness-kit";
 import { PermissionGroups } from "../../src/capability/PermissionGroups.ts";
-import { HarnessWiring } from "../../src/harness-kit/index.ts";
 import { Harnesses } from "../../src/harnesses/Harnesses.ts";
 import { markedHarnesses } from "./arch-utils.ts";
 
@@ -23,9 +23,9 @@ describe("project harness wiring", () => {
   });
 
   test("the list holds every class of the project marked with @Harness", () => {
-    const marked = [...new Bun.Glob("src/**/*.ts").scanSync({ cwd: root })]
-      .filter((path) => !path.startsWith("src/harness-kit/"))
-      .flatMap((path) => markedHarnesses(readFileSync(join(root, path), "utf8")));
+    const marked = [...new Bun.Glob("src/**/*.ts").scanSync({ cwd: root })].flatMap((path) =>
+      markedHarnesses(readFileSync(join(root, path), "utf8")),
+    );
 
     expect(marked.sort()).toEqual(Harnesses.ALL.map((harness) => harness.name).sort());
   });

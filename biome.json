@@ -55,7 +55,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/**", "!src/harness-kit/ai-sdk/**"],
+      "includes": ["src/**"],
       "linter": {
         "rules": {
           "style": {
@@ -65,7 +65,7 @@
                 "patterns": [
                   {
                     "group": ["ai", "ai/**", "@ai-sdk/**", "@openrouter/**"],
-                    "message": "Model SDK packages are imported only under src/harness-kit/ai-sdk/."
+                    "message": "Model SDK packages are imported only by the kit: take a model through @kerpetensh/harness-kit/ai-sdk."
                   }
                 ]
               }
@@ -85,7 +85,7 @@
                 "patterns": [
                   {
                     "group": ["ai", "ai/**", "@ai-sdk/**", "@openrouter/**"],
-                    "message": "Model SDK packages are imported only under src/harness-kit/ai-sdk/."
+                    "message": "Model SDK packages are imported only by the kit: take a model through @kerpetensh/harness-kit/ai-sdk."
                   },
                   {
                     "group": ["@asenajs/ioc/**"],

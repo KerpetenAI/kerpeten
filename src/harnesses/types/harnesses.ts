@@ -1,5 +1,5 @@
+import type { HarnessOptions, LlmAdapter } from "@kerpetensh/harness-kit";
 import type { Model, Usage } from "../../api/types/api.generated.ts";
-import type { HarnessOptions, LlmAdapter } from "../../harness-kit/index.ts";
 
 export type PromptRole = "reviewer" | "judge";
 

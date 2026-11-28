@@ -1,8 +1,8 @@
 import { Inject } from "@asenajs/ioc";
+import { Capability, ProcessCapability, type ProcessSettings, RunValue, Use } from "@kerpetensh/harness-kit";
 import type { z } from "zod";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
-import { Capability, ProcessCapability, type ProcessSettings, RunValue, Use } from "../../harness-kit/index.ts";
 import { terminalLine } from "../../text/text-utils.ts";
 import { JsonLines } from "./JsonLines.ts";
 import { LimitedOutput } from "./LimitedOutput.ts";

@@ -1,8 +1,8 @@
 import { afterAll, afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ExitCode } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
-import { ExitCode } from "../../src/harness-kit/index.ts";
 import { tempHome } from "../capability/chatgpt/chatgpt-utils.ts";
 import { FakeChatGpt } from "../capability/chatgpt/FakeChatGpt.ts";
 import type { KerpetenRun } from "./types/auth.ts";

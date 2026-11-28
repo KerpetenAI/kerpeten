@@ -1,5 +1,3 @@
-import { Git } from "../../capability/git/Git.ts";
-import { PermissionGroups } from "../../capability/PermissionGroups.ts";
 import {
   type After,
   type CommandArgs,
@@ -8,7 +6,10 @@ import {
   UsageError,
   Workflow,
   WorkflowBase,
-} from "../../harness-kit/index.ts";
+} from "@kerpetensh/harness-kit";
+import { Git } from "../../capability/git/Git.ts";
+import { GitTimeoutError } from "../../capability/git/GitTimeoutError.ts";
+import { PermissionGroups } from "../../capability/PermissionGroups.ts";
 import { ReviewInputError } from "../../harnesses/review/ReviewInputError.ts";
 import { errorMessage } from "../../text/text-utils.ts";
 import { ReviewWorkflow } from "../review/ReviewWorkflow.ts";
@@ -113,9 +114,12 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
 
   /**
    * Turns an error of the local review into the exit code, as the command reports it. An error before the review is
-   * ready or after its result is no review error and is thrown.
+   * ready or after its result is no review error and is thrown. A git that did not finish in its time is reported
+   * with exit code 1 wherever it happened, also while the repository is looked for.
    */
   protected override rescue(error: unknown, state: ReviewFlags & Partial<After<typeof ReviewPrintStep>>): number {
+    if (error instanceof GitTimeoutError) return this.command.fail(ExitCode.FAILED, errorMessage(error));
+
     if (state.config === undefined || state.findings !== undefined) throw error;
 
     const failure = state.plan?.adapter.failure;

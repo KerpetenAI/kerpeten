@@ -1,6 +1,6 @@
 import { Inject, Service } from "@asenajs/ioc";
+import { UsageTally } from "@kerpetensh/harness-kit";
 import { judgeLimitsSchema } from "../../capability/config/schemas/config-schema.ts";
-import { UsageTally } from "../../harness-kit/index.ts";
 import { errorMessage } from "../../text/text-utils.ts";
 import { deadlines, usageEntry } from "../harnesses-utils.ts";
 import type { ReviewerFinding } from "../review/types/review.ts";

@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { CapabilityUses, capabilitySpec, harnessSpec } from "@kerpetensh/harness-kit";
 import { GitHubPlatform } from "../../src/capability/platform/GitHubPlatform.ts";
 import { GitLabPlatform } from "../../src/capability/platform/GitLabPlatform.ts";
 import { OriginProject } from "../../src/capability/platform/OriginProject.ts";
 import { PlatformChoice } from "../../src/capability/platform/PlatformChoice.ts";
 import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
-import { CapabilityUses, capabilitySpec, harnessSpec } from "../../src/harness-kit/index.ts";
 import { Harnesses } from "../../src/harnesses/Harnesses.ts";
 import { MergeRequestStep } from "../../src/workflow/review/step/MergeRequestStep.ts";
 import { WrittenCommentStep } from "../../src/workflow/review/step/WrittenCommentStep.ts";

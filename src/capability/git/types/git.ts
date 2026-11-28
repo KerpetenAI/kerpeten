@@ -1,4 +1,4 @@
-import type { ProcessResult } from "../../../harness-kit/index.ts";
+import type { ProcessResult } from "@kerpetensh/harness-kit";
 
 export type ChangeStatus = "added" | "modified" | "deleted" | "renamed" | "copied" | "type_changed";
 

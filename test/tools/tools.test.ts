@@ -11,13 +11,6 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
-import { Git } from "../../src/capability/git/Git.ts";
-import { HeadCommit } from "../../src/capability/git/HeadCommit.ts";
-import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
-import { RepoLimits } from "../../src/capability/repo/RepoLimits.ts";
-import { RipgrepSearch } from "../../src/capability/repo/RipgrepSearch.ts";
-import { SearchTimer } from "../../src/capability/repo/SearchTimer.ts";
 import {
   harnessSpec,
   type PermissionGrant,
@@ -26,7 +19,14 @@ import {
   type ToolClass,
   type ToolOutcome,
   toolSpec,
-} from "../../src/harness-kit/index.ts";
+} from "@kerpetensh/harness-kit";
+import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
+import { Git } from "../../src/capability/git/Git.ts";
+import { HeadCommit } from "../../src/capability/git/HeadCommit.ts";
+import { RepoJail } from "../../src/capability/repo/RepoJail.ts";
+import { RepoLimits } from "../../src/capability/repo/RepoLimits.ts";
+import { RipgrepSearch } from "../../src/capability/repo/RipgrepSearch.ts";
+import { SearchTimer } from "../../src/capability/repo/SearchTimer.ts";
 import { ReviewerHarness } from "../../src/harnesses/review/ReviewerHarness.ts";
 import { LineSplitter } from "../../src/text/LineSplitter.ts";
 import { GlobTool } from "../../src/tools/glob/GlobTool.ts";

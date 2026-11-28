@@ -1,7 +1,7 @@
+import { RunService, RunValue, Use } from "@kerpetensh/harness-kit";
 import { Git } from "../../capability/git/Git.ts";
 import { HeadCommit } from "../../capability/git/HeadCommit.ts";
 import { RepoLimits } from "../../capability/repo/RepoLimits.ts";
-import { RunService, RunValue, Use } from "../../harness-kit/index.ts";
 import type { Logger } from "../../log/Logger.ts";
 import { LineSplitter } from "../../text/LineSplitter.ts";
 import type {

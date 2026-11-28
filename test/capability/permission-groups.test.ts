@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { HarnessWiring, harnessSpec, PermissionGroupSet } from "@kerpetensh/harness-kit";
 import { PermissionGroups } from "../../src/capability/PermissionGroups.ts";
-import { HarnessWiring, harnessSpec, PermissionGroupSet } from "../../src/harness-kit/index.ts";
 import { JudgeHarness } from "../../src/harnesses/judge/JudgeHarness.ts";
 import { ReviewerHarness } from "../../src/harnesses/review/ReviewerHarness.ts";
 

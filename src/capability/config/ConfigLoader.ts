@@ -1,5 +1,5 @@
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { readText } from "../../files/files-utils.ts";
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
 import { errorMessage } from "../../text/text-utils.ts";
 import { issueMessages } from "../../validation/validation-utils.ts";
 import { configSchema } from "./schemas/config-schema.ts";

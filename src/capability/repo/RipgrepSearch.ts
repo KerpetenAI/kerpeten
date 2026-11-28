@@ -1,4 +1,4 @@
-import { Capability, ProcessCapability, type ProcessSettings, RunValue, Use } from "../../harness-kit/index.ts";
+import { Capability, ProcessCapability, type ProcessSettings, RunValue, Use } from "@kerpetensh/harness-kit";
 import { RepoJail } from "./RepoJail.ts";
 import { RepoLimits } from "./RepoLimits.ts";
 import { SearchTimer } from "./SearchTimer.ts";

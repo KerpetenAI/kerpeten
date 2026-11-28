@@ -1,5 +1,5 @@
+import type { UsageTotals } from "@kerpetensh/harness-kit";
 import type { Usage } from "../api/types/api.generated.ts";
-import type { UsageTotals } from "../harness-kit/index.ts";
 import type { Deadlines, RunProvider, UsageEntry } from "./types/harnesses.ts";
 
 const FINALIZE_RESERVE_MS = 5 * 60 * 1000;

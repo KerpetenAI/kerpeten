@@ -1,8 +1,8 @@
+import { RunService, Use } from "@kerpetensh/harness-kit";
 import { Git } from "../../capability/git/Git.ts";
 import { HeadCommit } from "../../capability/git/HeadCommit.ts";
 import { RepoJail } from "../../capability/repo/RepoJail.ts";
 import { RepoLimits } from "../../capability/repo/RepoLimits.ts";
-import { RunService, Use } from "../../harness-kit/index.ts";
 import type { RuleFile, RuleFileSet, RuleFileText, SkippedRuleFile } from "./types/review.ts";
 
 /**

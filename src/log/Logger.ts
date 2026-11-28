@@ -1,7 +1,7 @@
 import { Inject, Service } from "@asenajs/ioc";
+import { type KitInstances, KitNames } from "@kerpetensh/harness-kit";
 import { Names } from "../app/Names.ts";
 import type { Instances } from "../app/types/app.ts";
-import { type KitInstances, KitNames } from "../harness-kit/index.ts";
 import { safeJson } from "../text/text-utils.ts";
 import type { LogFields, LoggerOptions, LogLevel, LogValue } from "./types/log.ts";
 

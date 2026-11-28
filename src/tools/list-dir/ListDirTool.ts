@@ -1,6 +1,6 @@
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { Tool } from "../../harness-kit/index.ts";
+import { Tool } from "@kerpetensh/harness-kit";
 import { RepoTool } from "../RepoTool.ts";
 import { ToolLimits } from "../ToolLimits.ts";
 import { listDirInput } from "./schemas/list-dir-schema.ts";

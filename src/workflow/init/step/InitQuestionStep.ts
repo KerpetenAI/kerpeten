@@ -1,5 +1,5 @@
+import { type After, ExitCode, FlowStep, FlowStepBase, Use } from "@kerpetensh/harness-kit";
 import { AnswerInputError } from "../../../capability/stdin/AnswerInputError.ts";
-import { type After, ExitCode, FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
 import { InitQuestions } from "../InitQuestions.ts";
 import type { InitTargetStep } from "./InitTargetStep.ts";
 

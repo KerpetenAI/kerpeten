@@ -1,10 +1,10 @@
 import { chmodSync, closeSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, statSync, writeSync } from "node:fs";
 import { dirname } from "node:path";
 import { Inject } from "@asenajs/ioc";
+import { Capability, CapabilityBase } from "@kerpetensh/harness-kit";
 import { Names } from "../../app/Names.ts";
 import type { Instances } from "../../app/types/app.ts";
 import { readJson } from "../../files/files-utils.ts";
-import { Capability, CapabilityBase } from "../../harness-kit/index.ts";
 import { ChatGptAuthError } from "./ChatGptAuthError.ts";
 import { authFilePath } from "./chatgpt-utils.ts";
 import { authRecordSchema } from "./schemas/chatgpt-schema.ts";

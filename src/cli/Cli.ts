@@ -1,5 +1,5 @@
+import { CLI, CliBase } from "@kerpetensh/harness-kit";
 import pkg from "../../package.json" with { type: "json" };
-import { CLI, CliBase } from "../harness-kit/index.ts";
 import { AuthCommand } from "../workflow/auth/AuthCommand.ts";
 import { CapabilitiesCommand } from "../workflow/capabilities/CapabilitiesCommand.ts";
 import { InitCommand } from "../workflow/init/InitCommand.ts";

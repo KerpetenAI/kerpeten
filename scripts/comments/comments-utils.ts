@@ -27,6 +27,8 @@ const REGEX_AFTER_WORDS: ReadonlySet<string> = new Set([
   "extends",
 ]);
 
+const CONDITION_WORDS: ReadonlySet<string> = new Set(["if", "while", "for", "with"]);
+
 function isIdentifierStart(c: string): boolean {
   return /[A-Za-z_$\u0080-￿]/.test(c);
 }
@@ -114,7 +116,9 @@ function scanSource(text: string): SourceScan {
   const strings: [number, number][] = [];
   const n = text.length;
   const braces: ("brace" | "template")[] = [];
+  const parens: boolean[] = [];
   let regexAllowed = true;
+  let condition = false;
   let i = text.startsWith("#!") ? lineEnd(text, 0) : 0;
 
   const template = (start: number): number => {
@@ -159,15 +163,20 @@ function scanSource(text: string): SourceScan {
   while (i < n) {
     const c = text[i] ?? "";
     const d = text[i + 1];
+    const afterConditionWord: boolean = condition;
+
+    condition = false;
 
     if (c === "/" && d === "/") {
       found.push(i);
+      condition = afterConditionWord;
       i = lineEnd(text, i);
     } else if (c === "/" && d === "*") {
       if (!isDocComment(text, i)) found.push(i);
 
       const end = text.indexOf("*/", i + 2);
 
+      condition = afterConditionWord;
       i = end < 0 ? n : end + 2;
     } else if (c === "/") {
       const end = regexAllowed ? regexEnd(text, i + 1) : undefined;
@@ -208,6 +217,7 @@ function scanSource(text: string): SourceScan {
       const word = text.slice(i, j);
 
       regexAllowed = REGEX_AFTER_WORDS.has(word) && !isPropertyName(text, i);
+      condition = CONDITION_WORDS.has(word) && !isPropertyName(text, i);
       i = j;
     } else if (/[0-9]/.test(c)) {
       let j = i + 1;
@@ -216,10 +226,18 @@ function scanSource(text: string): SourceScan {
 
       i = j;
       regexAllowed = false;
-    } else if (c === ")" || c === "]") {
+    } else if (c === "(") {
+      parens.push(afterConditionWord);
+      i++;
+      regexAllowed = true;
+    } else if (c === ")") {
+      i++;
+      regexAllowed = parens.pop() === true;
+    } else if (c === "]") {
       i++;
       regexAllowed = false;
     } else if (/\s/.test(c)) {
+      condition = afterConditionWord;
       i++;
     } else if ((c === "+" || c === "-") && d === c && !regexAllowed) {
       i += 2;

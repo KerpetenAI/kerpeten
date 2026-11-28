@@ -62,6 +62,21 @@ describe("no-comments scanner", () => {
     expect(at(`a+++${SL}[${LINE}]${SL}.lastIndex;`)).toEqual([]);
   });
 
+  test("reads a regex that starts the statement after a condition, and still sees division after other parentheses", () => {
+    expect(at(`if (ok) ${SL}[${LINE}]${SL}.test(s);`)).toEqual([]);
+    expect(at(`if (f(a)) ${SL}[${LINE}]${SL}.test(s);`)).toEqual([]);
+    expect(at(`while (more) ${SL}[${LINE}]${SL}.exec(s);`)).toEqual([]);
+    expect(at(`for (const s of all) ${SL}[${LINE}]${SL}.test(s);`)).toEqual([]);
+    expect(at(`if (a) x = (b) ${SL} 2; ${LINE} c`)).toEqual(["1:21"]);
+    expect(at(`x.if(a) ${SL} 2; ${LINE} c`)).toEqual(["1:14"]);
+  });
+
+  test("reads a regex after a condition that has a comment between its keyword and its parenthesis", () => {
+    expect(at(`if\n${DOC} doc ${CLOSE}\n(ok) ${SL}[${LINE}]${SL}.test(s);`)).toEqual([]);
+    expect(at(`while ${OPEN} c ${CLOSE} (more) ${SL}[${LINE}]${SL}.exec(s);`)).toEqual(["1:7"]);
+    expect(at(`if ${LINE} c\n(ok) ${SL}[${LINE}]${SL}.test(s);`)).toEqual(["1:4"]);
+  });
+
   test("skips a shebang and reports a comment after it", () => {
     expect(at(`#!/usr/bin/env bun\n${LINE} x\n`)).toEqual(["2:1"]);
   });

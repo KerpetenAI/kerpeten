@@ -1,4 +1,4 @@
-import type { HarnessLogFields, HarnessLogger } from "../../harness-kit/index.ts";
+import type { HarnessLogFields, HarnessLogger } from "@kerpetensh/harness-kit";
 
 /**
  * The log of one judge call. It adds the number of the finding to every line, so the lines of calls that run at the

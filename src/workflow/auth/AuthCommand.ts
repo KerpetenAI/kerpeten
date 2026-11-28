@@ -1,4 +1,4 @@
-import { type After, type CommandArgs, UsageError, Workflow, WorkflowBase } from "../../harness-kit/index.ts";
+import { type After, type CommandArgs, UsageError, Workflow, WorkflowBase } from "@kerpetensh/harness-kit";
 import { AuthStep } from "./step/AuthStep.ts";
 import type { AuthAction, AuthInput } from "./types/auth.ts";
 

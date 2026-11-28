@@ -1,7 +1,7 @@
+import type { Io } from "@kerpetensh/harness-kit";
+import type { AiSdkSettings, ProviderAdapter } from "@kerpetensh/harness-kit/ai-sdk";
 import type { Env, Stdin } from "../../app/types/app.ts";
 import type { ChatGptEndpoints } from "../../capability/chatgpt/types/chatgpt.ts";
-import type { AiSdkSettings, ProviderAdapter } from "../../harness-kit/ai-sdk/index.ts";
-import type { Io } from "../../harness-kit/index.ts";
 import type { ProviderLlm } from "../../harnesses/types/harnesses.ts";
 
 export interface CliOptions {

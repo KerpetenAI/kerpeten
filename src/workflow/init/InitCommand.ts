@@ -1,4 +1,4 @@
-import { type After, ExitCode, Workflow, WorkflowBase } from "../../harness-kit/index.ts";
+import { type After, ExitCode, Workflow, WorkflowBase } from "@kerpetensh/harness-kit";
 import { errorMessage } from "../../text/text-utils.ts";
 import { InitCheckStep } from "./step/InitCheckStep.ts";
 import { InitQuestionStep } from "./step/InitQuestionStep.ts";

@@ -1,4 +1,4 @@
-import type { ToolOutcome, ToolSpec } from "../../../src/harness-kit/index.ts";
+import type { ToolOutcome, ToolSpec } from "@kerpetensh/harness-kit";
 
 export interface Sandbox {
   readonly base: string;

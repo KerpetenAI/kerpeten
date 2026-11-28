@@ -1,4 +1,5 @@
 import { Inject } from "@asenajs/ioc";
+import { ExitCode, FlowStep, FlowStepBase, type KitInstances, KitNames } from "@kerpetensh/harness-kit";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
 import { ChatGptAuthFile } from "../../../capability/chatgpt/ChatGptAuthFile.ts";
@@ -6,7 +7,6 @@ import { ChatGptOAuth } from "../../../capability/chatgpt/ChatGptOAuth.ts";
 import { ChatGptPlan } from "../../../capability/chatgpt/ChatGptPlan.ts";
 import { ChatGptSignIn } from "../../../capability/chatgpt/ChatGptSignIn.ts";
 import type { AuthRecord } from "../../../capability/chatgpt/types/chatgpt.ts";
-import { ExitCode, FlowStep, FlowStepBase, type KitInstances, KitNames } from "../../../harness-kit/index.ts";
 import { terminalLine } from "../../../text/text-utils.ts";
 import type { AuthInput } from "../types/auth.ts";
 

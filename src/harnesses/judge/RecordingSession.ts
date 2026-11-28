@@ -1,4 +1,3 @@
-import type { z } from "zod";
 import {
   type CallUsage,
   type FinalizeOutcome,
@@ -7,7 +6,8 @@ import {
   type ToolPhaseHooks,
   type ToolPhaseOutcome,
   UsageTally,
-} from "../../harness-kit/index.ts";
+} from "@kerpetensh/harness-kit";
+import type { z } from "zod";
 
 /**
  * Wraps a model session and records what it did: the usage of every model call and the tool calls the model asked

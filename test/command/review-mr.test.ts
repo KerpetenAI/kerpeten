@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ExitCode } from "@kerpetensh/harness-kit";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
-import { ExitCode } from "../../src/harness-kit/index.ts";
 import { CommentMarker } from "../../src/layer/comment/CommentMarker.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
 import {
@@ -27,7 +27,7 @@ import {
   slurped,
 } from "../capability/platform/platform-utils.ts";
 import type { CliAnswer, CliName, GhAnswer } from "../capability/platform/types/platform.ts";
-import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
+import { mockClient, promptText } from "../test-utils.ts";
 
 const KEY = "sk-test-secret-value-123";
 

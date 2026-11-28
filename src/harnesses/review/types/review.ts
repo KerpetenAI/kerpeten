@@ -1,6 +1,6 @@
+import type { PartialReason } from "@kerpetensh/harness-kit";
 import type { z } from "zod";
 import type { Finding } from "../../../api/types/api.generated.ts";
-import type { PartialReason } from "../../../harness-kit/index.ts";
 import type { JudgeLabels, Scored, ScoredAction } from "../../../layer/scoring/types/scoring.ts";
 import type { FlowStepLimitReason, JudgeOutput } from "../../judge/types/judge.ts";
 import type { UsageEntry } from "../../types/harnesses.ts";

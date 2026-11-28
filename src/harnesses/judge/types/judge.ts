@@ -1,5 +1,5 @@
+import type { HarnessLogger, PartialReason, UsageTally } from "@kerpetensh/harness-kit";
 import type { z } from "zod";
-import type { HarnessLogger, PartialReason, UsageTally } from "../../../harness-kit/index.ts";
 import type { ReviewerFinding } from "../../review/types/review.ts";
 import type { Deadlines, ProviderLlm, UsageEntry } from "../../types/harnesses.ts";
 import type { judgeOutput } from "../schemas/judge-output-schema.ts";

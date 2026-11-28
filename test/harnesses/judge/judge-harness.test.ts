@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { contextSpec, HarnessWiring, harnessSpec } from "@kerpetensh/harness-kit";
 import { PermissionGroups } from "../../../src/capability/PermissionGroups.ts";
-import { contextSpec, HarnessWiring, harnessSpec } from "../../../src/harness-kit/index.ts";
 import { JudgeContext } from "../../../src/harnesses/judge/JudgeContext.ts";
 import { JudgeHarness } from "../../../src/harnesses/judge/JudgeHarness.ts";
 import { judgeOutput } from "../../../src/harnesses/judge/schemas/judge-output-schema.ts";
@@ -8,7 +8,7 @@ import type { JudgeOutput, JudgeRequest } from "../../../src/harnesses/judge/typ
 import { ReviewerHarness } from "../../../src/harnesses/review/ReviewerHarness.ts";
 import type { ReviewerFinding } from "../../../src/harnesses/review/types/review.ts";
 import type { Logger } from "../../../src/log/Logger.ts";
-import { limits, mockClient, noRun, promptText } from "../../harness-kit/harness-kit-utils.ts";
+import { limits, mockClient, noRun, promptText } from "../../test-utils.ts";
 import { capturingLogger, component, log } from "../harnesses-utils.ts";
 import { FakeToolsJudge } from "./FakeToolsJudge.ts";
 

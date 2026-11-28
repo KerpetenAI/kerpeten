@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Class } from "@asenajs/ioc";
+import { ExitCode, harnessSpec } from "@kerpetensh/harness-kit";
 import pkg from "../../package.json" with { type: "json" };
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { PermissionGroups } from "../../src/capability/PermissionGroups.ts";
-import { ExitCode, harnessSpec } from "../../src/harness-kit/index.ts";
 import { JudgeHarness } from "../../src/harnesses/judge/JudgeHarness.ts";
 import { ReviewerHarness } from "../../src/harnesses/review/ReviewerHarness.ts";
 import { Scorer } from "../../src/layer/scoring/Scorer.ts";
@@ -11,7 +11,7 @@ import { GlobTool } from "../../src/tools/glob/GlobTool.ts";
 import { AuthCommand } from "../../src/workflow/auth/AuthCommand.ts";
 import { ReviewWorkflow } from "../../src/workflow/review/ReviewWorkflow.ts";
 import { JudgeStep } from "../../src/workflow/review/step/JudgeStep.ts";
-import { errorChain } from "../harness-kit/harness-kit-utils.ts";
+import { errorChain } from "../test-utils.ts";
 import { BrokenReviewer } from "./BrokenReviewer.ts";
 import { Unregistered } from "./Unregistered.ts";
 

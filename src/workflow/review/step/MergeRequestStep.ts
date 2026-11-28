@@ -1,8 +1,8 @@
 import { Inject } from "@asenajs/ioc";
+import { FlowStep, FlowStepBase, Use } from "@kerpetensh/harness-kit";
 import { Names } from "../../../app/Names.ts";
 import type { Instances } from "../../../app/types/app.ts";
 import { PlatformChoice } from "../../../capability/platform/PlatformChoice.ts";
-import { FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
 import { ReviewInputError } from "../../../harnesses/review/ReviewInputError.ts";
 import { mergeRequestReadError } from "../review-utils.ts";
 import type { ReviewedMergeRequest, ReviewInput } from "../types/review-workflow.ts";

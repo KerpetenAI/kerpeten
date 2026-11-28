@@ -1,48 +1,50 @@
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { kitImportProblem } from "./arch-utils.ts";
 
 const root = join(import.meta.dir, "..", "..");
-const LIBRARY = "src/harness-kit/";
-const ENTRIES = ["src/harness-kit/index.ts", "src/harness-kit/ai-sdk/index.ts"];
 const SPECIFIER = /\bfrom\s*["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']|\bimport\s+["']([^"']+)["']/g;
 
-test("the harness library imports nothing of the project and is entered only through its index files", () => {
+test("the kit is the package: the repository holds no copy of it and imports it only through its two entry points", () => {
   const problems: string[] = [];
+  const files = [...new Bun.Glob("{src,test,scripts}/**/*.ts").scanSync({ cwd: root })].sort();
 
-  for (const file of [...new Bun.Glob("src/**/*.ts").scanSync({ cwd: root })].sort()) {
+  expect(files.length).toBeGreaterThan(0);
+
+  for (const file of files) {
     for (const match of readFileSync(join(root, file), "utf8").matchAll(SPECIFIER)) {
-      const path = match[1] ?? match[2] ?? match[3] ?? "";
+      const problem = kitImportProblem(file, match[1] ?? match[2] ?? match[3] ?? "");
 
-      if (!path.startsWith(".")) continue;
-
-      const target = normalize(join(dirname(file), path));
-      const fromLibrary = file.startsWith(LIBRARY);
-      const toLibrary = target.startsWith(LIBRARY);
-
-      if (fromLibrary && !toLibrary) problems.push(`${file} leaves the library: ${path}`);
-      if (!fromLibrary && toLibrary && !ENTRIES.includes(target)) problems.push(`${file} reaches inside: ${path}`);
+      if (problem !== undefined) problems.push(problem);
     }
   }
 
   expect(problems).toEqual([]);
+  expect(existsSync(join(root, "src", "harness-kit"))).toBe(false);
+  expect(existsSync(join(root, "test", "harness-kit"))).toBe(false);
 });
 
-test("the harness library tests import nothing of the project", () => {
-  const problems: string[] = [];
+test("the check takes the two entry points and refuses a folder of the repository and a path into the package", () => {
+  const kit = "@kerpetensh/harness-kit";
 
-  for (const file of [...new Bun.Glob("test/harness-kit/**/*.ts").scanSync({ cwd: root })].sort()) {
-    for (const match of readFileSync(join(root, file), "utf8").matchAll(SPECIFIER)) {
-      const path = match[1] ?? match[2] ?? match[3] ?? "";
+  expect(kitImportProblem("src/app/A.ts", kit)).toBeUndefined();
+  expect(kitImportProblem("src/app/A.ts", `${kit}/ai-sdk`)).toBeUndefined();
+  expect(kitImportProblem("src/app/A.ts", "@asenajs/ioc")).toBeUndefined();
+  expect(kitImportProblem("src/app/A.ts", "../capability/git/Git.ts")).toBeUndefined();
 
-      if (!path.startsWith(".")) continue;
+  expect(kitImportProblem("src/app/A.ts", `${kit}/dist/index.js`)).toBe(
+    `src/app/A.ts imports a path inside the kit package: ${kit}/dist/index.js`,
+  );
 
-      const target = normalize(join(dirname(file), path));
+  expect(kitImportProblem("src/app/A.ts", `${kit}/ai-sdk/index.js`)).toContain("a path inside the kit package");
 
-      if (!target.startsWith(LIBRARY) && !target.startsWith("test/harness-kit/"))
-        problems.push(`${file} imports ${path}`);
-    }
-  }
+  expect(kitImportProblem("src/app/A.ts", "../harness-kit/index.ts")).toBe(
+    "src/app/A.ts imports the kit by a file path: ../harness-kit/index.ts",
+  );
 
-  expect(problems).toEqual([]);
+  expect(kitImportProblem("test/app/a.test.ts", "../../src/harness-kit/ai-sdk/index.ts")).toContain("by a file path");
+  expect(kitImportProblem("test/app/a.test.ts", "../harness-kit/harness-kit-utils.ts")).toContain("by a file path");
+
+  expect(kitImportProblem("src/app/A.ts", `../../node_modules/${kit}/dist/index.js`)).toContain("by a file path");
 });

@@ -1,5 +1,5 @@
+import { Capability, type ProcessSettings, RunValue } from "@kerpetensh/harness-kit";
 import { RipgrepSearch } from "../../src/capability/repo/RipgrepSearch.ts";
-import { Capability, type ProcessSettings, RunValue } from "../../src/harness-kit/index.ts";
 
 /** Ripgrep whose command the run's values give, so a test can put a script in its place. */
 @Capability({
