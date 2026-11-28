@@ -146,6 +146,60 @@ describe("safe markdown: what it changes", () => {
     expect(SafeMarkdown.line("Use `Array<string>` here")).toBe("Use `Array<string>` here");
   });
 
+  test("text for a place inside a line that ends in a backslash gets a second one, so it escapes nothing after it", () => {
+    expect(SafeMarkdown.line("a path ends in \\")).toBe("a path ends in \\\\");
+    expect(SafeMarkdown.line("\\")).toBe("\\\\");
+    expect(SafeMarkdown.line("two \\\\")).toBe("two \\\\");
+    expect(SafeMarkdown.line("three \\\\\\")).toBe("three \\\\\\\\");
+    expect(SafeMarkdown.line("a \\ in the middle")).toBe("a \\ in the middle");
+    expect(SafeMarkdown.line("ends in an escaped star \\*")).toBe("ends in an escaped star \\*");
+  });
+
+  test("a * at an end of text for a place inside a line, and a # at its end, get a backslash", () => {
+    expect(SafeMarkdown.line("a * b *")).toBe("a * b \\*");
+    expect(SafeMarkdown.line("*args is unused")).toBe("\\*args is unused");
+    expect(SafeMarkdown.line("*")).toBe("\\*");
+    expect(SafeMarkdown.line("fix issue #")).toBe("fix issue \\#");
+    expect(SafeMarkdown.line("a backslash and a star \\\\*")).toBe("a backslash and a star \\\\\\*");
+    expect(SafeMarkdown.line("code ends it `a*`")).toBe("code ends it `a*`");
+    expect(SafeMarkdown.line("# is the first character")).toBe("# is the first character");
+    expect(SafeMarkdown.line("")).toBe("");
+  });
+
+  const ENDS: [string, string][] = [
+    ["a path ends in \\", "a path ends in \\"],
+    ["C:\\", "C:\\"],
+    ["\\", "\\"],
+    ["three \\\\\\", "three \\\\"],
+    ["a * b *", "a * b *"],
+    ["*args is unused", "*args is unused"],
+    ["use foo*", "use foo*"],
+    ["*", "*"],
+    ["**", "**"],
+    ["fix issue #", "fix issue #"],
+    ["a ## b ##", "a ## b ##"],
+    ["use C#", "use C#"],
+    ["ends in \\ and *", "ends in \\ and *"],
+  ];
+
+  for (const [title, shown] of ENDS) {
+    test(`the title ${JSON.stringify(title)} shows whole between the program's bold marks and as a heading`, () => {
+      const safe = SafeMarkdown.line(title);
+
+      expect(rendered(`**${safe}** · bug · P1`)).toBe(`<p><strong>${shown}</strong> · bug · P1</p>\n`);
+
+      expect(rendered(`### ${safe}\n\`src/a.ts:1\` · bug`)).toBe(
+        `<h3>${shown}</h3>\n<p><code>src/a.ts:1</code> · bug</p>\n`,
+      );
+    });
+  }
+
+  test("the same titles without the treatment do lose the bold or a character", () => {
+    expect(rendered("**a path ends in \\** · bug")).not.toContain("<strong>");
+    expect(rendered("**a * b *** · bug")).not.toContain("<strong>");
+    expect(rendered("### fix issue #\ntext")).toStartWith("<h3>fix issue</h3>");
+  });
+
   test("a code span holds any text on one line", () => {
     expect(SafeMarkdown.code("src/a.ts:2-4")).toBe("`src/a.ts:2-4`");
     expect(SafeMarkdown.code("a`b``c")).toBe("```a`b``c```");

@@ -12,6 +12,10 @@ import type { CodeFence } from "./types/comment.ts";
  * - Code stays as it is: a fenced code block, and a code span that opens and closes on one line. So `Array<string>` in
  *   backticks and a `<div>` in a code block read as written.
  * - A fenced code block that is left open is closed, so the text after it is not shown as code.
+ * - Text for a place inside a line is safe at its two ends, because the program writes its own marks right before and
+ *   after it, such as the `**` around a title. A backslash that ends it gets a second one, so it shows as a backslash
+ *   and escapes nothing of what follows. A `*` that starts or ends it gets a backslash, so it cannot join the marks
+ *   around it, and so does a `#` that ends it, which would be taken for the closing of a heading and not shown.
  *
  * To be sure where code is, it makes the text say so in one way only. A fence that is indented moves to the start of
  * its line, with the lines of its block, so every fence it knows is one of the top level and ends only at its closing
@@ -28,6 +32,10 @@ export class SafeMarkdown {
   private static readonly PUNCTUATION = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
 
   private static readonly BACKTICKS = /`+/g;
+
+  private static readonly JOINS_BEFORE = "*";
+
+  private static readonly JOINS_AFTER = "*#";
 
   /** Text of one or more lines that starts at the start of a line. */
   public static block(text: string): string {
@@ -53,9 +61,12 @@ export class SafeMarkdown {
     return lines.join("\n");
   }
 
-  /** Text for a place inside a line, such as a title: brought to one line, with no code block. */
+  /**
+   * Text for a place inside a line, such as a title: brought to one line, with no code block, and safe at its two
+   * ends, so marks written right before and after it keep their meaning.
+   */
   public static line(text: string): string {
-    return SafeMarkdown.inline(oneLine(SafeMarkdown.plain(text)));
+    return SafeMarkdown.bounded(SafeMarkdown.inline(oneLine(SafeMarkdown.plain(text))));
   }
 
   /** Text as a code span on one line, whatever backticks it holds. */
@@ -133,6 +144,33 @@ export class SafeMarkdown {
     }
 
     return safe;
+  }
+
+  /**
+   * The line with its two ends made safe for marks beside it: a first character that could join a mark before it and
+   * a last one that could join a mark after it get a backslash, and a backslash that would escape what follows gets a
+   * second one.
+   */
+  private static bounded(line: string): string {
+    const start = SafeMarkdown.JOINS_BEFORE.includes(line.charAt(0)) && line !== "" ? `\\${line}` : line;
+
+    if (SafeMarkdown.backslashesBefore(start, start.length) % 2 === 1) return `${start}\\`;
+
+    const last = start.charAt(start.length - 1);
+    const escaped = SafeMarkdown.backslashesBefore(start, start.length - 1) % 2 === 1;
+
+    if (start === "" || escaped || !SafeMarkdown.JOINS_AFTER.includes(last)) return start;
+
+    return `${start.slice(0, -1)}\\${last}`;
+  }
+
+  /** How many backslashes stand in a row right before the place `end` of the line. */
+  private static backslashesBefore(line: string, end: number): number {
+    let at = end;
+
+    while (at > 0 && line.charAt(at - 1) === "\\") at--;
+
+    return end - at;
   }
 
   private static runLength(line: string, from: number): number {

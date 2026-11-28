@@ -121,6 +121,44 @@ describe("comment texts: the line comment", () => {
   });
 });
 
+describe("comment texts: a title beside the program's marks", () => {
+  const titles: [string, string][] = [
+    ["The path ends in \\", "The path ends in \\"],
+    ["C:\\", "C:\\"],
+    ["a * b *", "a * b *"],
+    ["*args is never read", "*args is never read"],
+    ["fix issue #", "fix issue #"],
+  ];
+
+  for (const [title, shown] of titles) {
+    test(`the title ${JSON.stringify(title)} is bold in the line comment and whole in the summary`, () => {
+      const odd = finding({ title });
+      const comment = english.lineComment(odd);
+      const summary = english.summary([odd], { lineComments: 0, alreadyWritten: 0 });
+
+      expect(rendered(comment.body)).toStartWith(`<p><strong>${shown}</strong> · bug · P1</p>\n`);
+      expect(renderProblems(comment.body, NOTE, findingMarker(odd))).toEqual([]);
+      expect(rendered(summary.body)).toContain(`<h3>${shown}</h3>\n<p><code>src/a.ts:6</code> · bug · P1</p>\n`);
+      expect(summary.body.split("\n").at(-1)).toBe(SUMMARY_MARKER);
+    });
+  }
+
+  test("a title cut right after a backslash stays bold, with the mark of the cut", () => {
+    const long = finding({ title: `${"a".repeat(CommentTexts.MAX_TITLE - 1)}\\${"b".repeat(50)}` });
+    const comment = english.lineComment(long);
+
+    expect(comment.cut).toBe(true);
+
+    expect(rendered(comment.body)).toStartWith(
+      `<p><strong>${"a".repeat(CommentTexts.MAX_TITLE - 1)}\\…</strong> · bug · P1</p>\n`,
+    );
+  });
+
+  test("a title that is only a backslash is shown as one", () => {
+    expect(english.lineComment(finding({ title: "\\" })).body).toStartWith("**\\\\** · bug · P1\n");
+  });
+});
+
 describe("comment texts: the length limit", () => {
   test("a body that is too long is cut with a note, and the fix, the thumbs-down note and the marker stay whole", () => {
     const long = finding({ body: "word ".repeat(20_000) });
