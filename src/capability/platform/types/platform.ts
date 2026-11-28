@@ -1,12 +1,12 @@
 /** The kind of platform a merge request lives on. */
-export type PlatformKind = "github";
+export type PlatformKind = "github" | "gitlab";
 
 export type MergeRequestState = "open" | "closed" | "merged";
 
 /**
- * A merge request as a platform gives it, in words no platform owns: a GitHub pull request is one. `host` is the
- * platform's host in lowercase without a scheme, `projectId` the platform's own id of the repository the merge request
- * goes into. The title and the description are outside data.
+ * A merge request as a platform gives it, in words no platform owns: a GitHub pull request is one, a GitLab merge
+ * request another. `host` is the platform's host in lowercase without a scheme, `projectId` the platform's own id of
+ * the repository the merge request goes into. The title and the description are outside data.
  */
 export interface MergeRequest {
   readonly kind: PlatformKind;
@@ -29,10 +29,11 @@ export interface PlatformLines {
 }
 
 /**
- * A comment on a merge request. A line comment sits on lines of a file at a commit; a general comment belongs to the
- * merge request as a whole. A field that does not exist for a comment is `null`: `file`, `lines` and `replyTo` of a
- * general comment, `lines` of a comment on a whole file, `replyTo` of a comment that starts a thread. The author and
- * the body are outside data.
+ * A comment on a merge request. A line comment sits on lines of a file at a commit: `lines` are line numbers of
+ * `file` as it is at `commit`. So a comment on a line the change removed names the file and the line as they were
+ * before the change, and the commit before the change. A general comment belongs to the merge request as a whole. A
+ * field that does not exist for a comment is `null`: `file`, `lines` and `replyTo` of a general comment, `lines` of a
+ * comment on a whole file, `replyTo` of a comment that starts a thread. The author and the body are outside data.
  */
 export interface PlatformComment {
   readonly id: string;
@@ -53,6 +54,12 @@ export interface PlatformComment {
 export interface PlatformComments {
   readonly comments: readonly PlatformComment[];
   readonly complete: boolean;
+  readonly problems: readonly string[];
+}
+
+/** The entries of one list of a platform that were read, and what was not read of it, one line per problem. */
+export interface PlatformList<T> {
+  readonly items: readonly T[];
   readonly problems: readonly string[];
 }
 

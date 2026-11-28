@@ -9,7 +9,7 @@ import { SlurpedPages } from "../../../src/capability/platform/SlurpedPages.ts";
 import type { PlatformFailure } from "../../../src/capability/platform/types/platform.ts";
 import { PermissionGroupSet, Run } from "../../../src/harness-kit/index.ts";
 import { runComponent } from "../../app/app-utils.ts";
-import { fakeGh, ghCalls, ghPaths, pullJson, SHA_A, SHA_B, SHA_C, slurped } from "./platform-utils.ts";
+import { cliDirs, fakeGh, ghCalls, ghPaths, pullJson, SHA_A, SHA_B, SHA_C, slurped } from "./platform-utils.ts";
 import { TestGitHubPlatform } from "./TestGitHubPlatform.ts";
 import type { GhAnswer } from "./types/platform.ts";
 
@@ -89,7 +89,7 @@ describe("GitHub platform: the pull request", () => {
     });
 
     expect(ghCalls(dir)).toEqual([[...READ, "repos/{owner}/{repo}/pulls/12"]]);
-    expect(readFileSync(join(dir, "cwd.txt"), "utf8").trim()).toBe(dir);
+    expect(cliDirs(dir, "gh")).toEqual([dir]);
   });
 
   test("the host is the one of html_url in lowercase without the scheme, and the project id is a string", async () => {

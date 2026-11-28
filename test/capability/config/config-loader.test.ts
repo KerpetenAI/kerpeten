@@ -59,6 +59,16 @@ describe("config", () => {
     expect(config.ignore).toEqual(["**/*.lock", "**/generated/**"]);
     expect(config.comment_language).toBe("en");
     expect(config.openrouter).toEqual({ zdr: true });
+    expect(config.platform).toBeUndefined();
+  });
+
+  test("takes github or gitlab as the platform and refuses any other", () => {
+    expect(ok(`${MODELS}platform: github\n`).platform).toBe("github");
+    expect(ok(`${MODELS}platform: gitlab\n`).platform).toBe("gitlab");
+
+    for (const platform of ["bitbucket", "GitLab", "gitlab.com", '""', "[gitlab]"]) {
+      expect(errors(`${MODELS}platform: ${platform}\n`)).toContain("/platform");
+    }
   });
 
   test("keeps partially given sections and fills the rest", () => {

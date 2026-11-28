@@ -9,6 +9,12 @@ const EFFORTS = ["low", "medium", "high"] as const satisfies readonly (NonNullab
 
 const CHATGPT_EFFORTS = [...EFFORTS, "xhigh", "max"] as const satisfies readonly Effort[];
 
+/**
+ * The platforms a repository can name with `platform`. Without the key, the review tells the platform from the host
+ * of the `origin` remote, which it can only for github.com and gitlab.com.
+ */
+const PLATFORMS = ["github", "gitlab"] as const;
+
 const RESERVED_KEY_ENV = /^(CI_|GITHUB_|GITLAB_|GLAB_|GH_|KERPETEN_|ACTIONS_|RUNNER_)/;
 
 const CONTROL_MESSAGE = "must not contain control characters";
@@ -97,6 +103,7 @@ export const judgeLimitsSchema = z.strictObject({
 
 export const configSchema = z.strictObject({
   models: z.strictObject({ reviewer: model, judge: model }),
+  platform: z.enum(PLATFORMS).optional(),
   backend: z.strictObject({ url: httpUrl.optional() }).optional(),
   scoring: scoringSchema,
   thresholds: thresholdsSchema,

@@ -74,7 +74,7 @@ findings: 4
    kerpeten review --dry-run
    ```
 
-The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base. `--mr <n>` reviews GitHub pull request `n` with its title and description, read through the GitHub CLI.
+The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base. `--mr <n>` reviews GitHub pull request `n` or GitLab merge request `n` with its title and description, read through the GitHub CLI (`gh`) or the GitLab CLI (`glab`).
 
 ## Models
 
@@ -94,7 +94,7 @@ Another endpoint that speaks the API of one of these providers works too, with `
 3. **Filter.** Findings that point to a file or to lines that do not exist are dropped.
 4. **Judge.** Each finding goes to the judge model in its own call. The judge checks it against the code and labels it: `verified`, `unverified` or `refuted`, with a priority, a nature and the effort of the fix.
 5. **Scorer.** The labels become a score from 0 to 100. The score decides what a posted review would do with the finding: a comment on its line, a line in the summary, or nothing.
-6. **Comment plan.** For a pull request, Kerpeten decides what it would write: which findings become comments on lines of the diff, which go to the one summary comment and which are already written; nothing is posted yet.
+6. **Comment plan.** For a pull request or merge request, Kerpeten decides what it would write: which findings become comments on lines of the diff, which go to the one summary comment and which are already written; nothing is posted yet.
 
 ## Commands
 
@@ -113,7 +113,7 @@ The npm package brings a ready binary for Linux (x64 and arm64, glibc) and for m
 ## Documentation
 
 - [Configuration](https://github.com/KerpetenSH/kerpeten/blob/master/docs/configuration.md): models, keys, other endpoints, the comment language, limits and thresholds
-- [Reviewing](https://github.com/KerpetenSH/kerpeten/blob/master/docs/reviewing.md): what is reviewed, reviewing a pull request, extra context, rule files, the judge and the output
+- [Reviewing](https://github.com/KerpetenSH/kerpeten/blob/master/docs/reviewing.md): what is reviewed, extra context, rule files, the judge and the output
 - [ChatGPT plan](https://github.com/KerpetenSH/kerpeten/blob/master/docs/chatgpt-plan.md): the sign-in and how plan usage behaves
 - [Development](https://github.com/KerpetenSH/kerpeten/blob/master/docs/development.md): running from source, the checks and the builds
 - [Releasing](https://github.com/KerpetenSH/kerpeten/blob/master/RELEASING.md): how a version gets to npm

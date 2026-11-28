@@ -18,14 +18,8 @@ import {
   githubReviewCommentSchema,
   githubReviewSchema,
 } from "./schemas/github-schema.ts";
-import type {
-  GitHubIssueComment,
-  GitHubList,
-  GitHubPullRequest,
-  GitHubReview,
-  GitHubReviewComment,
-} from "./types/github.ts";
-import type { MergeRequest, Platform, PlatformComment, PlatformComments } from "./types/platform.ts";
+import type { GitHubIssueComment, GitHubPullRequest, GitHubReview, GitHubReviewComment } from "./types/github.ts";
+import type { MergeRequest, Platform, PlatformComment, PlatformComments, PlatformList } from "./types/platform.ts";
 
 /**
  * GitHub behind the `Platform` interface: reads a pull request and its comments with `gh api` in the run's repository,
@@ -281,7 +275,7 @@ export class GitHubPlatform extends ProcessCapability implements Platform {
     }
   }
 
-  private async list<T>(path: string, number: number, schema: z.ZodType<T>): Promise<GitHubList<T>> {
+  private async list<T>(path: string, number: number, schema: z.ZodType<T>): Promise<PlatformList<T>> {
     const result = await this.get([...GitHubPlatform.ALL_PAGES, `${path}?per_page=${GitHubPlatform.PAGE_SIZE}`]);
     const failure = result.exitCode === 0 ? undefined : GitHubPlatform.failure(result, number);
 
