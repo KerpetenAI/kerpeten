@@ -8,29 +8,29 @@ import {
 } from "../../harness-kit/index.ts";
 import { deadlines } from "../../harnesses/harnesses-utils.ts";
 import { ReviewInputError } from "../../harnesses/review/ReviewInputError.ts";
-import type { LocalReviewResult } from "../../harnesses/review/types/review.ts";
 import type { Deadlines } from "../../harnesses/types/harnesses.ts";
 import { ReviewReport } from "./ReviewReport.ts";
 import { CandidateStep } from "./step/CandidateStep.ts";
 import { ChangeStep } from "./step/ChangeStep.ts";
 import { JudgeStep } from "./step/JudgeStep.ts";
+import { MergeRequestStep } from "./step/MergeRequestStep.ts";
 import { ReviewerStep } from "./step/ReviewerStep.ts";
 import { ScoreStep } from "./step/ScoreStep.ts";
-import type { ReviewInput } from "./types/review-workflow.ts";
+import type { ReviewInput, ReviewResult } from "./types/review-workflow.ts";
 
 /**
- * The local review: reads the change, runs the reviewer, filters its findings, judges and scores the kept ones and
- * reports the result. An empty change ends after the first flow step. The kit checks the run's grant against the
- * reviewer and the judge before git is touched. Expected failures and partial runs are part of the result; a wrong
- * input, a refused grant among them, throws `ReviewInputError`.
+ * The local review: reads the merge request when the review is of one, reads the change, runs the reviewer, filters
+ * its findings, judges and scores the kept ones and reports the result. An empty change ends after the change flow
+ * step. The kit checks the run's grant against the reviewer and the judge before git is touched. Expected failures and
+ * partial runs are part of the result; a wrong input, a refused grant among them, throws `ReviewInputError`.
  */
 @Workflow({
   name: "review",
   description:
-    "Reviews the change between the base branch and HEAD: reads the change, runs the reviewer, keeps the findings that point at real lines, has the judge check them, scores them and reports the result.",
-  steps: [ChangeStep, ReviewerStep, CandidateStep, JudgeStep, ScoreStep],
+    "Reviews the change between the base branch and HEAD, or the change of a merge request whose last commit is HEAD: reads the change, runs the reviewer, keeps the findings that point at real lines, has the judge check them, scores them and reports the result.",
+  steps: [MergeRequestStep, ChangeStep, ReviewerStep, CandidateStep, JudgeStep, ScoreStep],
 })
-export class ReviewWorkflow extends WorkflowBase<ReviewInput, After<typeof ScoreStep>, LocalReviewResult> {
+export class ReviewWorkflow extends WorkflowBase<ReviewInput, After<typeof ScoreStep>, ReviewResult> {
   public static deadlines(start: number, minutes: number): Deadlines {
     return deadlines(start, minutes);
   }
@@ -51,7 +51,7 @@ export class ReviewWorkflow extends WorkflowBase<ReviewInput, After<typeof Score
     throw error;
   }
 
-  protected finish(state: After<typeof ScoreStep>): LocalReviewResult {
+  protected finish(state: After<typeof ScoreStep>): ReviewResult {
     return ReviewReport.of(state.change, state);
   }
 }

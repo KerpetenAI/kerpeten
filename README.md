@@ -74,7 +74,7 @@ findings: 4
    kerpeten review --dry-run
    ```
 
-The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base.
+The review covers the commits of your branch that are not on the default branch of `origin`. `--base <branch or commit>` picks another base. `--mr <n>` reviews GitHub pull request `n` with its title and description, read through the GitHub CLI.
 
 ## Models
 
@@ -100,7 +100,7 @@ Another endpoint that speaks the API of one of these providers works too, with `
 | Command | What it does |
 | --- | --- |
 | `kerpeten init` | Asks for the models and the comment language, writes `.kerpeten.yml` and checks the setup |
-| `kerpeten review --dry-run [--base <rev>] [--context-file <path>] [--extra-context <path or ->] [--json]` | Reviews the change and prints the findings |
+| `kerpeten review --dry-run [--base <rev>] [--mr <n>] [--context-file <path>] [--extra-context <path or ->] [--json]` | Reviews the change and prints the findings |
 | `kerpeten auth login \| logout \| status [--models]` | Signs in with ChatGPT for models with `provider: chatgpt` |
 | `kerpeten self-check` | Checks the build without the network |
 | `kerpeten capabilities` | Lists what the build can reach (git, the file system, other processes) with the permission each one needs, the permission groups, and the harnesses with the permissions they list |
@@ -112,7 +112,7 @@ The npm package brings a ready binary for Linux (x64 and arm64, glibc) and for m
 ## Documentation
 
 - [Configuration](https://github.com/KerpetenSH/kerpeten/blob/master/docs/configuration.md): models, keys, other endpoints, the comment language, limits and thresholds
-- [Reviewing](https://github.com/KerpetenSH/kerpeten/blob/master/docs/reviewing.md): what is reviewed, extra context, rule files, the judge and the output
+- [Reviewing](https://github.com/KerpetenSH/kerpeten/blob/master/docs/reviewing.md): what is reviewed, reviewing a pull request, extra context, rule files, the judge and the output
 - [ChatGPT plan](https://github.com/KerpetenSH/kerpeten/blob/master/docs/chatgpt-plan.md): the sign-in and how plan usage behaves
 - [Development](https://github.com/KerpetenSH/kerpeten/blob/master/docs/development.md): running from source, the checks and the builds
 - [Releasing](https://github.com/KerpetenSH/kerpeten/blob/master/RELEASING.md): how a version gets to npm

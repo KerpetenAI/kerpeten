@@ -22,20 +22,23 @@ import type { ReviewFlags } from "./types/review-command.ts";
 /**
  * The `review` command: checks the flags, gets the review ready, runs the local review workflow, which it lists in its
  * chain and which joins its run of the flag's permission group, and prints the result. An error of the local review ends the command
- * with 2 when the input was wrong and with 1 otherwise, or with the ChatGPT plan's stop when the plan stopped it.
+ * with 2 when the input was wrong, a pull request of `--mr` that cannot be read among them, and with 1 otherwise, or with
+ * the ChatGPT plan's stop when the plan stopped it.
  */
 @Workflow({
   name: "review-command",
   description:
-    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. This build needs --dry-run.",
+    "Review the change between the base branch and HEAD and print the findings. The reviewer model finds them, the judge model checks and labels each one, and the scorer gives it a score and the action a posted review would take. Both models only read the repository. --mr <n> reviews GitHub pull request n of the repository, read with gh, with its title and description; HEAD must be its last commit. This build needs --dry-run.",
   steps: [ReviewFlagStep, ReviewSetupStep, ReviewWorkflow, ReviewOutcomeStep, ReviewPrintStep],
   command: {
     name: "review",
-    usage: "[--dry-run] [--full] [--base <rev>] [--context-file <path>] [--extra-context <path or ->] [--json]",
+    usage:
+      "[--dry-run] [--full] [--base <rev>] [--mr <n>] [--context-file <path>] [--extra-context <path or ->] [--json]",
     options: {
       "dry-run": { type: "boolean" },
       full: { type: "boolean" },
       base: { type: "string" },
+      mr: { type: "string" },
       "context-file": { type: "string" },
       "extra-context": { type: "string" },
       json: { type: "boolean" },
@@ -48,6 +51,18 @@ import type { ReviewFlags } from "./types/review-command.ts";
   },
 })
 export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof ReviewPrintStep>, number> {
+  private static readonly MR_NUMBER = /^[1-9][0-9]*$/;
+
+  private static mergeRequestNumber(value: string): number {
+    const number = Number(value);
+
+    if (!ReviewCommand.MR_NUMBER.test(value) || !Number.isSafeInteger(number)) {
+      throw new UsageError("--mr must be the number of a pull request, 1 or more");
+    }
+
+    return number;
+  }
+
   public override commandInput(args: CommandArgs): ReviewFlags {
     const base = args.string("base");
 
@@ -57,6 +72,13 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
       } catch {
         throw new UsageError("--base must be a commit or branch name");
       }
+    }
+
+    const mrFlag = args.string("mr");
+    const mr = mrFlag === undefined ? undefined : ReviewCommand.mergeRequestNumber(mrFlag);
+
+    if (mr !== undefined && base !== undefined) {
+      throw new UsageError("--mr and --base do not go together: the pull request names its own base");
     }
 
     const contextFile = args.string("context-file");
@@ -77,6 +99,7 @@ export class ReviewCommand extends WorkflowBase<ReviewFlags, After<typeof Review
       json: args.boolean("json"),
       group: args.choice(),
       ...(base === undefined ? {} : { base }),
+      ...(mr === undefined ? {} : { mr }),
       ...(contextFile === undefined ? {} : { contextFile }),
       ...(extraContext === undefined ? {} : { extraContext }),
     };

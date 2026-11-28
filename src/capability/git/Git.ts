@@ -70,6 +70,18 @@ export class Git extends ProcessCapability {
     return out;
   }
 
+  /** Whether the commit `sha` is in the repository; nothing is fetched. */
+  public async hasCommit(sha: string): Promise<boolean> {
+    if (!Git.isSha(sha)) throw new Error("hasCommit takes a commit id");
+
+    const args = ["rev-parse", "--verify", "--quiet", "--end-of-options", `${sha}^{commit}`];
+    const result = await this.run(args);
+
+    if (result.exitCode !== 0 && result.exitCode !== 1) throw new GitError(args, result.exitCode, result.stderr);
+
+    return result.exitCode === 0;
+  }
+
   public async mergeBase(a: string, b: string): Promise<string> {
     Git.assertRevision(a);
     Git.assertRevision(b);

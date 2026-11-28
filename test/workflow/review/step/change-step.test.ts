@@ -19,7 +19,13 @@ describe("change flow step", () => {
   test("adds the change against the merge base", async () => {
     const { repo, base, head } = repoWithBranch();
 
-    const added = await runStep(await step(), { repo, base: "main", pathEnv: "", ...runValues() });
+    const added = await runStep(await step(), {
+      repo,
+      base: "main",
+      pathEnv: "",
+      mergeRequest: undefined,
+      ...runValues(),
+    });
 
     if (added instanceof WorkflowEnd) throw new Error("the change is not empty");
 
@@ -41,7 +47,7 @@ describe("change flow step", () => {
 
   test("leaves the repository jail to the first tool that takes it, which builds it over the files tracked at HEAD", async () => {
     const { repo } = repoWithBranch();
-    const input = { repo, base: "main", pathEnv: "", ...runValues() };
+    const input = { repo, base: "main", pathEnv: "", mergeRequest: undefined, ...runValues() };
     const run = await openRun(input);
     const built = spyOn(RepoJail.prototype, "build");
     const changeStep = await step();
@@ -62,7 +68,13 @@ describe("change flow step", () => {
 
     const head = commit(repo, "base");
 
-    const added = await runStep(await step(), { repo, base: "main", pathEnv: "", ...runValues() });
+    const added = await runStep(await step(), {
+      repo,
+      base: "main",
+      pathEnv: "",
+      mergeRequest: undefined,
+      ...runValues(),
+    });
 
     expect(added).toEqual(
       new WorkflowEnd({
