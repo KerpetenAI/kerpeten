@@ -65,7 +65,8 @@ describe("comment plan flow step", () => {
     expect(limited.commentPlan?.findings.map((finding) => finding.action)).toEqual(["summary"]);
     expect(limited.commentPlan?.summary.body).toStartWith("## Kerpeten incelemesi\n");
 
-    const written = [{ kind: "line" as const, mark: CommentMarker.finding(head, "src/a.ts", 2, 2).mark }];
+    const mark = CommentMarker.finding(head, "src/a.ts", 2, 2).mark;
+    const written = [{ kind: "line" as const, mark, ref: "github:review_comment/7" }];
     const again = step.execute({ ...state, written });
 
     expect(again.commentPlan?.findings.map((finding) => finding.action)).toEqual(["suppressed_duplicate"]);

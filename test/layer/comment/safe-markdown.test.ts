@@ -55,6 +55,14 @@ const PIECES = [
   "<table><tr><td>",
   "\r\n",
   "\0",
+  "@octocat",
+  "@acme/reviewers",
+  "#12",
+  "acme/shop#12",
+  "GH-12",
+  "\\@octocat",
+  "&#64;octocat",
+  "&#35;12",
 ];
 
 /** A comment whose body and fix are `text`, made safe, followed by a note and a marker. */
@@ -207,6 +215,127 @@ describe("safe markdown: what it changes", () => {
     expect(SafeMarkdown.code("two\nlines")).toBe("`two lines`");
     expect(SafeMarkdown.code("")).toBe("");
     expect(rendered(SafeMarkdown.code("__init__.py <b> a`b"))).toBe("<p><code>__init__.py &lt;b&gt; a`b</code></p>\n");
+  });
+});
+
+describe("safe markdown: text that acts", () => {
+  /** What a reader sees of `text` outside code: the rendered HTML without its code spans and code blocks. */
+  function outsideCode(text: string): string {
+    return rendered(text).replace(/<pre>[\s\S]*?<\/pre>|<code>[\s\S]*?<\/code>/g, "");
+  }
+
+  test("a mention of a user or a team goes into a code span, so it is shown as written and notifies nobody", () => {
+    expect(SafeMarkdown.block("Ask @octocat and @acme/reviewers, cc @hubot.")).toBe(
+      "Ask `@octocat` and `@acme/reviewers`, cc `@hubot`.",
+    );
+
+    expect(SafeMarkdown.block("@octocat wrote this\n(@octocat) é@octocat *@octocat*")).toBe(
+      "`@octocat` wrote this\n(`@octocat`) é`@octocat` *`@octocat`*",
+    );
+
+    expect(SafeMarkdown.block("Use @Inject and @types/node and @scope/pkg-name.")).toBe(
+      "Use `@Inject` and `@types/node` and `@scope/pkg-name`.",
+    );
+
+    expect(SafeMarkdown.block("_@octocat_ and x_@octocat")).toBe("_`@octocat`_ and x_`@octocat`");
+  });
+
+  test("a code span never touches another: a zero-width space stands between two that would", () => {
+    expect(SafeMarkdown.block("@octocat@hubot")).toBe("`@octocat`\u200b`@hubot`");
+    expect(SafeMarkdown.block("`a`@octocat```b```")).toBe("`a`\u200b`@octocat`\u200b```b```");
+    expect(SafeMarkdown.block("`a` @octocat `b` and `c``d`")).toBe("`a` `@octocat` `b` and `c``d`");
+  });
+
+  test("an @ inside a word, as in a mail address, and one before a space mention nobody and stay", () => {
+    for (const text of ["mail ada@example.com", "a @ b", "@", "price@100"]) {
+      expect(SafeMarkdown.block(text)).toBe(text);
+    }
+  });
+
+  test("a reference to an issue goes into a code span, with the repository or the user before it", () => {
+    expect(SafeMarkdown.block("Fixes #12, see (#7) and #3.")).toBe("Fixes `#12`, see (`#7`) and `#3`.");
+
+    expect(SafeMarkdown.block("See acme/shop#12, octocat#3 and GH-45.")).toBe(
+      "See `acme/shop#12`, `octocat#3` and `GH-45`.",
+    );
+
+    expect(SafeMarkdown.block("acme/shop#12 a/b/c#12 x#1 gh-7 #1e90ff")).toBe(
+      "`acme/shop#12` a/b/c`#12` `x#1` `gh-7` `#1e90ff`",
+    );
+  });
+
+  test("a # that starts no number stays: a heading, a color name, an anchor", () => {
+    for (const text of ["# Title", "## Two things", "color #fff", "see page#top", "C# and F#", "#"]) {
+      expect(SafeMarkdown.block(text)).toBe(text);
+    }
+  });
+
+  test("a backslash before the @ or the # hides nothing: it is dropped, and the text is code all the same", () => {
+    expect(SafeMarkdown.block("cc \\@octocat and \\#12")).toBe("cc `@octocat` and `#12`");
+    expect(SafeMarkdown.block("a \\\\@octocat")).toBe("a \\\\`@octocat`");
+    expect(SafeMarkdown.block("a \\@ b \\# c")).toBe("a \\@ b \\# c");
+  });
+
+  test("a character reference that stands for @ or # gets a backslash, so it is shown as written", () => {
+    expect(SafeMarkdown.block("&#64;octocat &#x40;octocat &#X0040;octocat &commat;octocat")).toBe(
+      "\\&#64;octocat \\&#x40;octocat \\&#X0040;octocat \\&commat;octocat".replace("#64", "`#64`"),
+    );
+
+    expect(SafeMarkdown.block("&#35;12 &#x23;12 &num;12")).toBe("\\&`#35`;12 \\&#x23;12 \\&num;12");
+    expect(SafeMarkdown.block("a &amp; b &lt; c &#65;")).toBe("a &amp; b &lt; c &`#65`;");
+  });
+
+  test("inside code nothing changes: a code span, a fenced block and a plain link keep their @ and #", () => {
+    const text = "`@octocat #12` and <https://example.com/@octocat#12>\n```ts\n@Inject(Foo) // #12 @octocat\n```";
+
+    expect(SafeMarkdown.block(text)).toBe(text);
+  });
+
+  test("text for a place inside a line, such as a title, gets the same treatment", () => {
+    expect(SafeMarkdown.line("@octocat broke #12")).toBe("`@octocat` broke `#12`");
+    expect(SafeMarkdown.line("thanks\n@octocat")).toBe("thanks `@octocat`");
+  });
+
+  test("a renderer shows no mention and no issue number outside code, whatever was tried", () => {
+    const tries = [
+      "cc @octocat",
+      "cc \\@octocat",
+      "cc &#64;octocat",
+      "cc &#x40;octocat",
+      "cc &commat;octocat",
+      "**@octocat**",
+      "[@octocat](https://example.com)",
+      "> @octocat",
+      "- @octocat",
+      "| @octocat |",
+      "<@octocat",
+      "@octocat/@octocat",
+      "Fixes #12",
+      "Fixes \\#12",
+      "Fixes &#35;12",
+      "Fixes &num;12",
+      "Fixes acme/shop#12",
+      "Fixes GH-12",
+      "`a` @octocat `b`",
+      "` @octocat",
+      "@octocat`x`",
+    ];
+
+    const acting = /@octocat|(?<![&\w])#12\b|GH-12/;
+
+    for (const text of tries) {
+      expect({ text, shown: outsideCode(SafeMarkdown.block(text)).match(acting)?.[0] }).toEqual({
+        text,
+        shown: undefined,
+      });
+
+      expect({ text, shown: outsideCode(`**${SafeMarkdown.line(text)}**`).match(acting)?.[0] }).toEqual({
+        text,
+        shown: undefined,
+      });
+    }
+
+    expect(outsideCode("cc @octocat and &#64;octocat, fixes #12")).toMatch(acting);
   });
 });
 

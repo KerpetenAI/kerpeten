@@ -1,0 +1,326 @@
+import { afterEach, describe, expect, test } from "bun:test";
+import type { Run } from "@kerpetensh/harness-kit";
+import { PlatformChoice } from "../../../../src/capability/platform/PlatformChoice.ts";
+import type { LineCommentOutcome, SummaryWrite } from "../../../../src/capability/platform/types/platform.ts";
+import type { JudgedFinding } from "../../../../src/harnesses/review/types/review.ts";
+import { CommentMarker } from "../../../../src/layer/comment/CommentMarker.ts";
+import type { WrittenComment } from "../../../../src/layer/comment/types/comment.ts";
+import { CommentPlanStep } from "../../../../src/workflow/review/step/CommentPlanStep.ts";
+import { CommentWriteStep } from "../../../../src/workflow/review/step/CommentWriteStep.ts";
+import type { ReviewedMergeRequest } from "../../../../src/workflow/review/types/review-workflow.ts";
+import { runStep } from "../../../app/app-utils.ts";
+import { capturingLogger } from "../../../harnesses/harnesses-utils.ts";
+import { GivenPlatformChoice } from "../GivenPlatformChoice.ts";
+import { RecordingWriter } from "../RecordingWriter.ts";
+import { candidates, cleanDirs, good, repoWithBranch, reviewComponent } from "../review-utils.ts";
+
+afterEach(cleanDirs);
+
+const labelled = {
+  ...good,
+  file: "src/a.ts",
+  verdict: "verified",
+  priority: "P0",
+  nature: "critical",
+  fix_effort: "easy",
+  rationale: "y is never checked",
+} as const;
+
+const onLine2: JudgedFinding = { ...labelled, title: "On line 2", score: 95, action: "inline" };
+
+const onLine1: JudgedFinding = {
+  ...labelled,
+  title: "On line 1",
+  start_line: 1,
+  end_line: 1,
+  score: 90,
+  action: "inline",
+};
+
+const listed: JudgedFinding = {
+  ...labelled,
+  title: "Listed",
+  start_line: 1,
+  end_line: 2,
+  score: 40,
+  action: "summary",
+};
+
+const low: JudgedFinding = { ...labelled, title: "Low", score: 10, action: "stored" };
+
+const SUMMARY_REF = "github:issue_comment/900";
+
+/**
+ * The state after the comment plan flow step of a review of pull request 12 that is no dry run, with `findings` and
+ * with the comments of Kerpeten that are `written` on it; `log` gets its log lines.
+ */
+async function planned(
+  findings: readonly JudgedFinding[],
+  written: (head: string) => readonly WrittenComment[] = () => [],
+) {
+  const { repo, head } = repoWithBranch();
+  const captured = capturingLogger();
+
+  const mergeRequest: ReviewedMergeRequest = {
+    kind: "github",
+    host: "github.com",
+    projectId: "4242",
+    number: 12,
+    title: "Add div",
+    description: "",
+    state: "open",
+    headSha: head,
+    baseSha: "b".repeat(40),
+    baseRef: "main",
+    tenant: "default",
+  };
+
+  const scored = {
+    ...(await candidates(repo, [good])),
+    dryRun: false,
+    log: captured.log,
+    mergeRequest,
+    written: written(head),
+    judged: undefined,
+    findings: [...findings],
+  };
+
+  const state = { ...scored, ...(await reviewComponent(CommentPlanStep)).execute(scored) };
+
+  return { state, head, lines: captured.lines };
+}
+
+/** Runs the comment write flow step on `state` with a writer that answers as `lines` and `summary` say. */
+async function write(
+  state: Awaited<ReturnType<typeof planned>>["state"],
+  lines: Readonly<Record<number, LineCommentOutcome>> = {},
+  summary?: SummaryWrite,
+  problems: readonly string[] = [],
+) {
+  const writer = new RecordingWriter(lines, summary, problems);
+
+  const { commentWrite } = await runStep(await reviewComponent(CommentWriteStep), state, {
+    give: (run) => run.give(PlatformChoice, new GivenPlatformChoice(writer)),
+  });
+
+  return { commentWrite, calls: writer.calls };
+}
+
+describe("comment write flow step", () => {
+  test("writes the line comments first, at the head commit and each with its marker, and the summary last", async () => {
+    const { state, head } = await planned([onLine1, listed, onLine2, low]);
+    const { commentWrite, calls } = await write(state);
+    const plan = state.commentPlan;
+
+    expect(calls.map((call) => call.kind)).toEqual(["lines", "summary"]);
+
+    expect(calls[0]).toEqual({
+      kind: "lines",
+      number: 12,
+      headSha: head,
+      comments: [
+        {
+          file: "src/a.ts",
+          startLine: 2,
+          endLine: 2,
+          body: plan?.lineComments[0]?.body ?? "",
+          marker: CommentMarker.finding(head, "src/a.ts", 2, 2).line(),
+        },
+        {
+          file: "src/a.ts",
+          startLine: 1,
+          endLine: 1,
+          body: plan?.lineComments[1]?.body ?? "",
+          marker: CommentMarker.finding(head, "src/a.ts", 1, 1).line(),
+        },
+      ],
+    });
+
+    expect(calls[1]).toEqual({ kind: "summary", number: 12, body: plan?.summary.body ?? "", existing: undefined });
+
+    expect(commentWrite?.failures).toEqual([]);
+
+    expect(
+      commentWrite?.plan.findings.map((finding) => [
+        finding.title,
+        finding.action,
+        "comment_ref" in finding ? finding.comment_ref : undefined,
+      ]),
+    ).toEqual([
+      ["On line 1", "inline", "github:review_comment/1"],
+      ["Listed", "summary", SUMMARY_REF],
+      ["On line 2", "inline", "github:review_comment/2"],
+      ["Low", "stored", undefined],
+    ]);
+
+    expect(commentWrite?.plan.lineComments.map((comment) => comment.ref)).toEqual([
+      "github:review_comment/2",
+      "github:review_comment/1",
+    ]);
+
+    expect(commentWrite?.plan.summary.ref).toBe(SUMMARY_REF);
+  });
+
+  test("a refused line comment sends its finding to the summary that is written, and is no failure", async () => {
+    const { state, lines } = await planned([onLine1, onLine2]);
+    const refused = { kind: "refused", reason: "Line could not be resolved" } as const;
+    const { commentWrite, calls } = await write(state, { 1: refused });
+    const summary = calls[1]?.kind === "summary" ? calls[1].body : "";
+
+    expect(state.commentPlan?.summary.body).toContain("Line comments in this run: 2.");
+    expect(state.commentPlan?.summary.body).not.toContain("### On line 1");
+    expect(summary).toContain("Line comments in this run: 1.");
+    expect(summary).toContain("### On line 1\n`src/a.ts:1` · bug · P0");
+    expect(summary).toBe(commentWrite?.plan.summary.body ?? "");
+
+    expect(
+      commentWrite?.plan.findings.map((finding) => [
+        finding.action,
+        "comment_ref" in finding ? finding.comment_ref : undefined,
+      ]),
+    ).toEqual([
+      ["summary", SUMMARY_REF],
+      ["inline", "github:review_comment/2"],
+    ]);
+
+    expect(commentWrite?.failures).toEqual([]);
+
+    expect(lines).toContainEqual({
+      level: "warn",
+      message: "line comment refused, its finding goes to the summary",
+      fields: { place: "src/a.ts:1", reason: "Line could not be resolved" },
+    });
+  });
+
+  test("a failed line comment leaves its finding stored, is logged and gives one line, and the others and the summary are written", async () => {
+    const { state, lines } = await planned([onLine1, onLine2, listed]);
+    const failed = { kind: "failed", message: "not written: gh api failed (exit 1): HTTP 502" } as const;
+    const { commentWrite, calls } = await write(state, { 2: failed });
+
+    expect(calls.map((call) => call.kind)).toEqual(["lines", "summary"]);
+
+    expect(
+      commentWrite?.plan.findings.map((finding) => [
+        finding.title,
+        finding.action,
+        "comment_ref" in finding ? finding.comment_ref : undefined,
+      ]),
+    ).toEqual([
+      ["On line 1", "inline", "github:review_comment/1"],
+      ["On line 2", "stored", undefined],
+      ["Listed", "summary", SUMMARY_REF],
+    ]);
+
+    expect(commentWrite?.failures).toEqual([
+      "line comment on src/a.ts:2: not written: gh api failed (exit 1): HTTP 502",
+    ]);
+
+    expect(commentWrite?.plan.summary.body).toContain("Line comments in this run: 1.");
+    expect(commentWrite?.plan.summary.body).not.toContain("### On line 2");
+
+    expect(lines).toContainEqual({
+      level: "error",
+      message: "line comment failed, its finding is stored",
+      fields: { place: "src/a.ts:2", error: "not written: gh api failed (exit 1): HTTP 502" },
+    });
+  });
+
+  test("a summary that cannot be written leaves its findings stored and gives one line; the line comments stay written", async () => {
+    const { state, lines } = await planned([onLine2, listed]);
+    const failed = { kind: "failed", message: "not written: gh api failed (exit 1): HTTP 500" } as const;
+    const { commentWrite } = await write(state, {}, failed);
+
+    expect(
+      commentWrite?.plan.findings.map((finding) => [
+        finding.action,
+        "comment_ref" in finding ? finding.comment_ref : undefined,
+      ]),
+    ).toEqual([
+      ["inline", "github:review_comment/2"],
+      ["stored", undefined],
+    ]);
+
+    expect(commentWrite?.plan.summary.ref).toBeUndefined();
+    expect(commentWrite?.failures).toEqual(["summary comment: not written: gh api failed (exit 1): HTTP 500"]);
+
+    expect(lines).toContainEqual({
+      level: "error",
+      message: "summary comment failed, its findings are stored",
+      fields: { error: "not written: gh api failed (exit 1): HTTP 500" },
+    });
+
+    expect(lines).toContainEqual({
+      level: "info",
+      message: "comments written",
+      fields: { line_comments: 1, refused: 0, failed: 0, summary: "failed", summary_ref: undefined },
+    });
+  });
+
+  test("the summary comment of Kerpeten that is on the merge request is updated: the first comment of the conversation with the summary's marker", async () => {
+    const other = "c".repeat(40);
+
+    const { state, lines } = await planned([onLine2], (head) => [
+      { kind: "line", mark: CommentMarker.finding(other, "src/a.ts", 2, 2).mark, ref: "github:review_comment/5" },
+      { kind: "general", mark: CommentMarker.summary(head).mark, ref: "github:review/6" },
+      { kind: "line", mark: CommentMarker.summary(head).mark, ref: "github:review_comment/7" },
+      { kind: "general", mark: CommentMarker.summary(other).mark, ref: "github:issue_comment/77" },
+      { kind: "general", mark: CommentMarker.summary(head).mark, ref: "github:issue_comment/78" },
+    ]);
+
+    const { commentWrite, calls } = await write(state);
+
+    expect(calls[1]).toMatchObject({ kind: "summary", existing: "github:issue_comment/77" });
+    expect(commentWrite?.plan.summary.ref).toBe("github:issue_comment/77");
+
+    expect(lines).toContainEqual({
+      level: "warn",
+      message: "more than one summary comment is on the merge request, the first is updated",
+      fields: { updated: "github:issue_comment/77", left: "github:issue_comment/78" },
+    });
+
+    expect(lines).toContainEqual({
+      level: "info",
+      message: "comments written",
+      fields: { line_comments: 1, refused: 0, failed: 0, summary: "updated", summary_ref: "github:issue_comment/77" },
+    });
+  });
+
+  test("a review without findings writes no line comment and still writes the summary", async () => {
+    const { state } = await planned([]);
+    const { commentWrite, calls } = await write(state);
+
+    expect(calls[0]).toMatchObject({ kind: "lines", comments: [] });
+    expect(calls[1]?.kind === "summary" ? calls[1].body : "").toContain("The review found nothing to report.");
+    expect(commentWrite?.plan.summary.ref).toBe(SUMMARY_REF);
+    expect(commentWrite?.failures).toEqual([]);
+  });
+
+  test("what the writer says beside the outcomes is logged as a warning", async () => {
+    const { state, lines } = await planned([onLine2]);
+
+    await write(state, {}, undefined, ["1 of the 1 line comments of review 9 are written, but their ids are unknown"]);
+
+    expect(lines).toContainEqual({
+      level: "warn",
+      message: "line comments written",
+      fields: { problem: "1 of the 1 line comments of review 9 are written, but their ids are unknown" },
+    });
+  });
+
+  test("a dry run, a review of no merge request and a review without a plan write nothing and ask for no writer", async () => {
+    const { state } = await planned([onLine2]);
+    const step = await reviewComponent(CommentWriteStep);
+
+    const refusing = { give: (run: Run) => void run.give(PlatformChoice, new GivenPlatformChoice()) };
+
+    for (const quiet of [
+      { ...state, dryRun: true },
+      { ...state, mergeRequest: undefined, written: undefined },
+      { ...state, commentPlan: undefined },
+    ]) {
+      expect(await runStep(step, quiet, refusing)).toEqual({ commentWrite: undefined });
+    }
+
+    await expect(runStep(step, state, refusing)).rejects.toThrow("no writer for the platform github");
+  });
+});

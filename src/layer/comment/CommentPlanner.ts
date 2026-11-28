@@ -3,7 +3,15 @@ import type { JudgedFinding } from "../../harnesses/review/types/review.ts";
 import type { CommentableLines } from "./CommentableLines.ts";
 import { CommentTexts } from "./CommentTexts.ts";
 import { CommentWords } from "./CommentWords.ts";
-import type { CommentPlan, CommentPlanInput, PlannedAction, PlannedFinding, RankedFinding } from "./types/comment.ts";
+import type {
+  CommentPlan,
+  CommentPlanInput,
+  LineCommentResult,
+  LineWriteInput,
+  PlannedAction,
+  PlannedFinding,
+  RankedFinding,
+} from "./types/comment.ts";
 import { WrittenFindings } from "./WrittenFindings.ts";
 
 /**
@@ -26,6 +34,16 @@ import { WrittenFindings } from "./WrittenFindings.ts";
  * Where scores are equal, the file, then the first line, then the title decide, and after them the last line, the
  * body, the fix and the category, so the order never depends on the order the findings came in. The line comments and
  * the findings of the summary are in that order, highest score first.
+ *
+ * The plan is also what says what was written, in two more steps that are as pure as the first. The planner still
+ * writes nothing: it is told what became of each comment.
+ *
+ * 6. `afterLineComments`, once the line comments were given to the platform: a finding whose line comment is written
+ *    keeps `inline` and carries the ref of that comment. One whose lines the platform refused goes to the summary.
+ *    One whose write failed is stored. The summary text is written again, so its count of line comments and its
+ *    findings say what is really there.
+ * 7. `afterSummary`, once the summary comment was given to the platform: every finding of the summary carries the
+ *    ref of the summary comment. When the summary could not be written, its findings are stored.
  */
 @Service("kerpeten:comment-planner")
 export class CommentPlanner {
@@ -76,6 +94,94 @@ export class CommentPlanner {
     };
   }
 
+  /**
+   * The plan after its line comments were given to the platform, with one result for each line comment in the plan's
+   * order. The line comments of the new plan are the written ones, each with its ref.
+   */
+  public afterLineComments(input: LineWriteInput): CommentPlan {
+    const { plan, results } = input;
+
+    const inline = plan.findings
+      .map((finding, index) => ({ finding, index }))
+      .filter((entry) => entry.finding.action === "inline")
+      .sort((one, other) => CommentPlanner.byRank(one.finding, other.finding));
+
+    if (results.length !== plan.lineComments.length || inline.length !== plan.lineComments.length) {
+      throw new RangeError(
+        `a plan of ${plan.lineComments.length} line comments got ${results.length} results for ${inline.length} findings on lines`,
+      );
+    }
+
+    for (const [rank, { finding }] of inline.entries()) {
+      const comment = plan.lineComments[rank];
+
+      if (
+        comment?.file !== finding.file ||
+        comment.startLine !== finding.start_line ||
+        comment.endLine !== finding.end_line
+      ) {
+        throw new RangeError(`line comment ${rank + 1} of the plan is not the one of its finding`);
+      }
+    }
+
+    const result = new Map(inline.map((entry, rank) => [entry.index, results[rank]]));
+    const findings = plan.findings.map((finding, index) => CommentPlanner.written(finding, result.get(index)));
+    const listed = CommentPlanner.ranked(findings, "summary");
+
+    const lineComments = plan.lineComments.flatMap((comment, index) => {
+      const written = results[index];
+
+      return written?.kind === "written" ? [{ ...comment, ref: written.ref }] : [];
+    });
+
+    const texts = new CommentTexts(CommentWords.of(input.language), input.headSha);
+
+    return {
+      findings,
+      lineComments,
+      summary: texts.summary(listed, {
+        lineComments: lineComments.length,
+        alreadyWritten: plan.counts.duplicate,
+        ...(input.partialReason === undefined ? {} : { partialReason: input.partialReason }),
+      }),
+      counts: {
+        inline: lineComments.length,
+        summary: listed.length,
+        duplicate: plan.counts.duplicate,
+        stored: findings.filter((finding) => finding.action === "stored").length,
+      },
+    };
+  }
+
+  /**
+   * The plan after its summary comment was given to the platform: with `ref`, the ref of the written summary comment,
+   * every finding of the summary carries it; without one the summary was not written, and its findings are stored.
+   */
+  public afterSummary(plan: CommentPlan, ref: string | undefined): CommentPlan {
+    const findings = plan.findings.map((finding) => {
+      if ("judge_error" in finding || finding.action !== "summary") return finding;
+
+      return ref === undefined ? CommentPlanner.planned(finding, "stored") : { ...finding, comment_ref: ref };
+    });
+
+    if (ref !== undefined) return { ...plan, findings, summary: { ...plan.summary, ref } };
+
+    return {
+      ...plan,
+      findings,
+      counts: { ...plan.counts, summary: 0, stored: plan.counts.stored + plan.counts.summary },
+    };
+  }
+
+  /** A finding after its line comment was given to the platform; a finding that had no line comment stays as it is. */
+  private static written(finding: PlannedFinding, result: LineCommentResult | undefined): PlannedFinding {
+    if (result === undefined || "judge_error" in finding) return finding;
+
+    if (result.kind === "written") return { ...finding, comment_ref: result.ref };
+
+    return { ...finding, action: result.kind === "refused" ? "summary" : "stored" };
+  }
+
   /** The action of a finding before the limit of line comments is applied. */
   private static first(finding: JudgedFinding, written: boolean, lines: CommentableLines): PlannedAction {
     if (finding.action === "stored") return "stored";
@@ -87,7 +193,7 @@ export class CommentPlanner {
     return lines.holds(finding.file, finding.start_line, finding.end_line) ? "inline" : "summary";
   }
 
-  private static planned(finding: JudgedFinding, action: PlannedAction): PlannedFinding {
+  private static planned(finding: JudgedFinding | PlannedFinding, action: PlannedAction): PlannedFinding {
     return "judge_error" in finding ? finding : { ...finding, action };
   }
 
