@@ -8,6 +8,7 @@ import type { JudgeOutput } from "../../../src/harnesses/judge/types/judge.ts";
 import type { ReviewerFinding, ReviewerRun } from "../../../src/harnesses/review/types/review.ts";
 import type { CandidateStep } from "../../../src/workflow/review/step/CandidateStep.ts";
 import { ChangeStep } from "../../../src/workflow/review/step/ChangeStep.ts";
+import type { WrittenCommentStep } from "../../../src/workflow/review/step/WrittenCommentStep.ts";
 import type { ReviewInput } from "../../../src/workflow/review/types/review-workflow.ts";
 import { runStep } from "../../app/app-utils.ts";
 import { commit, sh, tempRepo, write } from "../../capability/git/git-utils.ts";
@@ -73,14 +74,15 @@ export function repoWithBranch(): { repo: string; base: string; head: string } {
   return { repo, base, head };
 }
 
-export async function changed(repo: string): Promise<After<typeof ChangeStep>> {
+/** The state of a review of no merge request after its change was read: no comment of a merge request was looked for. */
+export async function changed(repo: string): Promise<After<typeof WrittenCommentStep>> {
   const input: ReviewInput = { repo, base: "main", pathEnv: process.env.PATH ?? "", ...runValues() };
   const state = { ...input, mergeRequest: undefined };
   const added = await runStep(await reviewComponent(ChangeStep), state);
 
   if (added instanceof WorkflowEnd) throw new Error("the change is empty");
 
-  return { ...state, ...added };
+  return { ...state, ...added, written: undefined };
 }
 
 export function reviewerRun(findings: readonly ReviewerFinding[]): ReviewerRun {

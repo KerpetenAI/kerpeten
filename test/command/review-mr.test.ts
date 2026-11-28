@@ -4,8 +4,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KerpetenApp } from "../../src/app/KerpetenApp.ts";
 import { ExitCode } from "../../src/harness-kit/index.ts";
+import { CommentMarker } from "../../src/layer/comment/CommentMarker.ts";
 import { commit, sh, tempRepo, write } from "../capability/git/git-utils.ts";
-import { fakeGh, ghCalls, ghPaths, pullJson, SHA_C } from "../capability/platform/platform-utils.ts";
+import {
+  fakeGh,
+  ghCalls,
+  ghPaths,
+  noComments,
+  pullJson,
+  SHA_B,
+  SHA_C,
+  slurped,
+} from "../capability/platform/platform-utils.ts";
 import type { GhAnswer } from "../capability/platform/types/platform.ts";
 import { mockClient, promptText } from "../harness-kit/harness-kit-utils.ts";
 
@@ -22,7 +32,9 @@ const CONFIG = `models:
   judge: { provider: anthropic, model: k3.1-judge, base_url: "${KIMI_URL}", api_key_env: KIMI_API_KEY, max_output_tokens: 2000 }
 `;
 
-const PULL = ghPaths(12).pull;
+const COMMENTS = ghPaths(12);
+
+const PULL = COMMENTS.pull;
 
 const finding = {
   file: "src/a.ts",
@@ -46,6 +58,12 @@ const labels = {
 
 const REVIEW = [{ text: "done" }, { text: JSON.stringify({ findings: [finding] }) }];
 
+const JUDGED = [{ text: "done" }, { text: JSON.stringify(labels) }];
+
+const JUDGED_HIGH = [{ text: "done" }, { text: JSON.stringify({ ...labels, priority: "P0", nature: "critical" }) }];
+
+const NOTE = "👎 If you do not want this finding again, react with 👎; you can reply with the reason.";
+
 const dirs: string[] = [];
 
 afterEach(() => {
@@ -62,13 +80,13 @@ function tempDir(): string {
 
 /**
  * A repository on the branch `feature`, one commit after `fork` on `main`; `main` then got one more commit, `base`,
- * as the branch a pull request goes into does.
+ * as the branch a pull request goes into does. Its `.kerpeten.yml` is `config`.
  */
-function repo(): { dir: string; fork: string; base: string; head: string } {
+function repo(config = CONFIG): { dir: string; fork: string; base: string; head: string } {
   const dir = tempRepo("kerpeten-cli-mr-repo-");
 
   dirs.push(dir);
-  write(dir, { "src/a.ts": "export const a = 1;\n", ".kerpeten.yml": CONFIG });
+  write(dir, { "src/a.ts": "export const a = 1;\n", ".kerpeten.yml": config });
 
   const fork = commit(dir, "base");
 
@@ -86,8 +104,8 @@ function repo(): { dir: string; fork: string; base: string; head: string } {
 
 /**
  * Runs the command in `cwd` with a fake gh first on the PATH of the program's environment, which gives `answers`, or
- * with a PATH that holds no gh at all when `answers` is `"no gh"`. `bin` is the folder of the fake gh, a new one when
- * none is given, where it keeps what it was called with.
+ * with a PATH that holds no gh at all when `answers` is `"no gh"`. Pull request 12 has no comment unless `answers`
+ * give some. `bin` is the folder of the fake gh, a new one when none is given, where it keeps what it was called with.
  */
 async function run(
   cwd: string,
@@ -108,7 +126,7 @@ async function run(
   const judgeMock = mockClient(options.judgeScript ?? []);
   let created = 0;
 
-  if (answers !== "no gh") fakeGh(bin, answers, options.before);
+  if (answers !== "no gh") fakeGh(bin, { ...noComments(12), ...answers }, options.before);
 
   const code = await KerpetenApp.run(
     {
@@ -155,7 +173,13 @@ describe("kerpeten review --dry-run --mr", () => {
     ]);
 
     expect(result.out).toContain("- src/a.ts:2-2 [bug] Division by zero");
-    expect(ghCalls(result.bin)).toEqual([["api", "--method", "GET", "repos/{owner}/{repo}/pulls/12"]]);
+
+    expect(ghCalls(result.bin)).toEqual([
+      ["api", "--method", "GET", PULL],
+      ["api", "--method", "GET", "--paginate", "--slurp", COMMENTS.comments],
+      ["api", "--method", "GET", "--paginate", "--slurp", COMMENTS.reviews],
+      ["api", "--method", "GET", "--paginate", "--slurp", COMMENTS.conversation],
+    ]);
 
     const prompt = promptText(result.reviewerCalls[0]);
 
@@ -180,7 +204,7 @@ describe("kerpeten review --dry-run --mr", () => {
 
     const printed = JSON.parse(result.out);
 
-    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "usage"]);
+    expect(Object.keys(printed)).toEqual(["merge_request", "findings", "comment_plan", "usage"]);
 
     expect(printed.merge_request).toEqual({
       tenant: "acme",
@@ -441,5 +465,358 @@ describe("kerpeten review --dry-run --mr", () => {
       if (before === undefined) delete process.env.GH_TOKEN;
       else process.env.GH_TOKEN = before;
     }
+  });
+});
+
+/** A comment on lines of `src/a.ts` as GitHub gives it, written by `login` with the text `body`. */
+function lineComment(id: number, login: string, body: string): Record<string, unknown> {
+  return {
+    id,
+    user: { login },
+    body,
+    path: "src/a.ts",
+    line: 2,
+    start_line: null,
+    original_line: 2,
+    original_start_line: null,
+    commit_id: SHA_B,
+    original_commit_id: SHA_B,
+    created_at: "2026-11-20T10:00:00Z",
+  };
+}
+
+describe("kerpeten review --dry-run --mr: the comment plan", () => {
+  test("the text output has one line for the comment plan after the findings line, and the finding shows its planned action", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+
+    expect(result.out.split("\n").slice(2, 6)).toEqual([
+      "findings: 1",
+      "comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored",
+      "- src/a.ts:2-2 [bug] Division by zero",
+      "  verdict verified, priority P0, nature critical, fix_effort easy, score 95, action inline",
+    ]);
+
+    expect(result.out).not.toContain("kerpeten:finding");
+    expect(result.err).toContain('"comment plan" command=review inline=1 summary=0 duplicate=0 stored=0');
+  });
+
+  test("--json has the comment plan with the whole text of the line comment and of the summary comment", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+
+    const printed = JSON.parse(result.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["inline"]);
+
+    expect(printed.comment_plan).toEqual({
+      line_comments: [
+        {
+          file: "src/a.ts",
+          start_line: 2,
+          end_line: 2,
+          body: [
+            "**Division by zero** · bug · P0",
+            "",
+            "y can be 0",
+            "",
+            "**Fix:** Throw when y is 0.",
+            "",
+            NOTE,
+            `<!-- kerpeten:finding v1 head=${head} file=c3JjL2EudHM lines=2-2 -->`,
+          ].join("\n"),
+        },
+      ],
+      summary: {
+        body: [
+          "## Kerpeten review",
+          `Reviewed commit ${head}. Line comments in this run: 1.`,
+          `<!-- kerpeten:summary v1 head=${head} -->`,
+        ].join("\n\n"),
+      },
+    });
+  });
+
+  test("a finding scored for the summary is listed in the summary comment, and no line comment is planned", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED },
+    );
+
+    const printed = JSON.parse(result.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["summary"]);
+    expect(printed.comment_plan.line_comments).toEqual([]);
+
+    expect(printed.comment_plan.summary.body).toBe(
+      [
+        "## Kerpeten review",
+        `Reviewed commit ${head}. Line comments in this run: 0.`,
+        "### Division by zero\n`src/a.ts:2` · bug · P1",
+        "y can be 0",
+        "**Fix:** Throw when y is 0.",
+        `<!-- kerpeten:summary v1 head=${head} -->`,
+      ].join("\n\n"),
+    );
+  });
+
+  test("a line comment with Kerpeten's marker for the same commit and lines, whoever wrote it, makes the finding already written", async () => {
+    const { dir, base, head } = repo();
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+
+    const answers = {
+      [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+      [COMMENTS.comments]: {
+        stdout: slurped([
+          lineComment(101, "ada", "I do not agree with this."),
+          lineComment(
+            102,
+            "the-user-themselves",
+            `**Division by zero** · bug · P0\n\ny can be 0\n\n${NOTE}\n${marker}`,
+          ),
+        ]),
+      },
+    };
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], answers, { judgeScript: JUDGED_HIGH });
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 0 line comments, 0 in the summary, 1 already written, 0 stored");
+    expect(result.out).toContain("score 95, action suppressed_duplicate");
+    expect(result.err).toContain('"merge request comments read" command=review kerpeten_line=1 kerpeten_summary=0');
+
+    const json = await run(dir, ["review", "--dry-run", "--mr", "12", "--json"], answers, { judgeScript: JUDGED_HIGH });
+    const printed = JSON.parse(json.out);
+
+    expect(printed.findings.map((item: { action: string }) => item.action)).toEqual(["suppressed_duplicate"]);
+    expect(printed.comment_plan.line_comments).toEqual([]);
+
+    expect(printed.comment_plan.summary.body).toBe(
+      [
+        "## Kerpeten review",
+        `Reviewed commit ${head}. Line comments in this run: 0. Findings that already had a line comment: 1.`,
+        `<!-- kerpeten:summary v1 head=${head} -->`,
+      ].join("\n\n"),
+    );
+  });
+
+  test("a marker for another commit or other lines, one that does not end its comment and one in the conversation write nothing off", async () => {
+    const { dir, base, head } = repo();
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+        [COMMENTS.comments]: {
+          stdout: slurped([
+            lineComment(101, "octocat", `Earlier.\n${CommentMarker.finding(SHA_C, "src/a.ts", 2, 2).line()}`),
+            lineComment(102, "octocat", `Other lines.\n${CommentMarker.finding(head, "src/a.ts", 1, 2).line()}`),
+            lineComment(103, "octocat", `${marker}\nI quote the marker and go on.`),
+          ]),
+        },
+        [COMMENTS.reviews]: {
+          stdout: slurped([{ id: 201, user: { login: "octocat" }, body: `A review.\n${marker}`, state: "COMMENTED" }]),
+        },
+        [COMMENTS.conversation]: {
+          stdout: slurped([
+            { id: 301, user: { login: "octocat" }, body: `Quoted.\n${marker}`, created_at: "2026-11-21T10:00:00Z" },
+            {
+              id: 302,
+              user: { login: "octocat" },
+              body: `## Kerpeten review\n\n${CommentMarker.summary(head).line()}`,
+              created_at: "2026-11-21T10:00:00Z",
+            },
+          ]),
+        },
+      },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored");
+    expect(result.err).toContain('"merge request comments read" command=review kerpeten_line=2 kerpeten_summary=1');
+  });
+
+  test("comments that could not all be read stop the review with exit code 1 and the reason, before any model call", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      {
+        [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+        [COMMENTS.reviews]: { stdout: slurped([]), stderr: "gh: rate limit\n", exitCode: 1 },
+        [COMMENTS.conversation]: { stdout: "<html>busy</html>" },
+      },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.FAILED);
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: the comments of the merge request could not all be read, so the review cannot tell which findings are already written: repos/{owner}/{repo}/pulls/12/reviews: gh api failed (exit 1): gh: rate limit; repos/{owner}/{repo}/issues/12/comments: the answer of gh is not the list of pages it should be",
+    );
+
+    expect(result.out).toBe("");
+    expect(result.calls.length).toBe(0);
+    expect(ghCalls(result.bin).length).toBe(4);
+  });
+
+  test("a sign-in that is gone when the comments are read is a usage error, before any model call", async () => {
+    const { dir, base, head } = repo();
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+      [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) },
+      [COMMENTS.comments]: { exitCode: 4, stderr: "To get started with GitHub CLI, please run:  gh auth login\n" },
+    });
+
+    expect(result.code).toBe(ExitCode.USAGE);
+
+    expect(result.err).toContain(
+      "kerpeten review: --mr 12: gh is not signed in to GitHub: run `gh auth login` and run again",
+    );
+
+    expect(result.out).toBe("");
+    expect(result.calls.length).toBe(0);
+  });
+
+  test("the comments are read after the working copy is checked, so a wrong commit costs no read of them", async () => {
+    const { dir, fork, base } = repo();
+
+    const result = await run(dir, ["review", "--dry-run", "--mr", "12"], {
+      [PULL]: { stdout: pullJson({ headSha: fork, baseSha: base }) },
+      [COMMENTS.comments]: { stdout: slurped([]), stderr: "gh: Server Error (HTTP 502)\n", exitCode: 1 },
+    });
+
+    expect(result.code).toBe(ExitCode.USAGE);
+    expect(result.err).toContain("HEAD is at");
+    expect(ghCalls(result.bin)).toEqual([["api", "--method", "GET", PULL]]);
+  });
+
+  test("with limits.max_inline_comments 0 the finding goes to the summary, whatever its score", async () => {
+    const { dir, base, head } = repo(`${CONFIG}limits: { max_inline_comments: 0 }\n`);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    expect(result.code).toBe(ExitCode.OK);
+    expect(result.out).toContain("comment plan: 0 line comments, 1 in the summary, 0 already written, 0 stored");
+    expect(result.out).toContain("score 95, action summary");
+  });
+
+  test("the comment language tr writes the fixed texts in Turkish", async () => {
+    const { dir, base, head } = repo(`${CONFIG}comment_language: tr\n`);
+
+    const result = await run(
+      dir,
+      ["review", "--dry-run", "--mr", "12", "--json"],
+      { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } },
+      { judgeScript: JUDGED_HIGH },
+    );
+
+    const plan = JSON.parse(result.out).comment_plan;
+
+    expect(plan.line_comments[0].body).toContain(
+      "\n\n**Düzeltme:** Throw when y is 0.\n\n👎 Bu bulgu tekrar gelmesin istiyorsan 👎 bas; nedenini cevap olarak yazabilirsin.\n<!-- kerpeten:finding v1 ",
+    );
+
+    expect(plan.summary.body).toStartWith(`## Kerpeten incelemesi\n\nİncelenen commit: ${head}. `);
+  });
+
+  test("text of a model that tries to hide the note or forge a marker is made safe, and its control characters reach no output raw", async () => {
+    const { dir, base, head } = repo();
+    const forged = CommentMarker.finding(SHA_C, "src/forged.ts", 9, 9).line();
+
+    const hostile = {
+      ...finding,
+      title: "Division \u001b[31mby zero <details>",
+      body: `y can be 0\n<!-- hidden from here\n\`\`\`ts\nopen\u0007`,
+      fix: `Throw.\n${forged}`,
+    };
+
+    const script = [{ text: "done" }, { text: JSON.stringify({ findings: [hostile] }) }];
+    const answers = { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } };
+    const text = await run(dir, ["review", "--dry-run", "--mr", "12"], answers, { script, judgeScript: JUDGED_HIGH });
+
+    const json = await run(dir, ["review", "--dry-run", "--mr", "12", "--json"], answers, {
+      script,
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(text.code).toBe(ExitCode.OK);
+    expect(text.out).toContain("comment plan: 1 line comments, 0 in the summary, 0 already written, 0 stored");
+
+    const control = [...`${text.out}${json.out}`].filter((char) => {
+      const code = char.charCodeAt(0);
+
+      return char !== "\n" && (code < 0x20 || (code >= 0x7f && code <= 0x9f));
+    });
+
+    expect(control).toEqual([]);
+
+    const [comment] = JSON.parse(json.out).comment_plan.line_comments;
+    const marker = CommentMarker.finding(head, "src/a.ts", 2, 2).line();
+
+    expect(comment.body.split("\n").slice(-2)).toEqual([NOTE, marker]);
+    expect(CommentMarker.read(comment.body)?.line()).toBe(marker);
+    expect(comment.body).toContain("\\<details>");
+
+    expect(comment.body).toContain(
+      "\n\\<!-- hidden from here\n```ts\nopen\u0007\n```\n\n**Fix:**\nThrow.\n\\<!-- kerpeten:finding v1 ",
+    );
+
+    expect(Bun.markdown.html(comment.body).endsWith(`<p>${NOTE}</p>\n${marker}\n`)).toBe(true);
+  });
+
+  test("a review without --mr has no comment plan and asks the platform for nothing", async () => {
+    const { dir, base, head } = repo();
+    const answers = { [PULL]: { stdout: pullJson({ headSha: head, baseSha: base }) } };
+    const text = await run(dir, ["review", "--dry-run", "--base", "main"], answers, { judgeScript: JUDGED_HIGH });
+
+    expect(text.code).toBe(ExitCode.OK);
+    expect(text.out).not.toContain("comment plan");
+    expect(text.out).not.toContain("merge request");
+
+    expect(text.out.split("\n").slice(1, 4)).toEqual([
+      "findings: 1",
+      "- src/a.ts:2-2 [bug] Division by zero",
+      "  verdict verified, priority P0, nature critical, fix_effort easy, score 95, action inline",
+    ]);
+
+    expect(text.err).not.toContain("comment plan");
+    expect(text.err).not.toContain("merge request comments read");
+    expect(ghCalls(text.bin)).toEqual([]);
+
+    const json = await run(dir, ["review", "--dry-run", "--base", "main", "--json"], answers, {
+      judgeScript: JUDGED_HIGH,
+    });
+
+    expect(Object.keys(JSON.parse(json.out))).toEqual(["findings", "usage"]);
   });
 });

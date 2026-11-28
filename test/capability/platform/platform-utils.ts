@@ -70,6 +70,22 @@ export function ghCalls(dir: string): string[][] {
     .map((line) => line.split("|"));
 }
 
+/** What `gh api --paginate --slurp` prints: one array whose elements are the pages. */
+export function slurped(...pages: readonly (readonly unknown[])[]): string {
+  return JSON.stringify(pages);
+}
+
+/** The answers of a pull request that has no comment of any kind: three lists of one empty page. */
+export function noComments(number: number): Record<string, GhAnswer> {
+  const paths = ghPaths(number);
+
+  return {
+    [paths.comments]: { stdout: slurped([]) },
+    [paths.reviews]: { stdout: slurped([]) },
+    [paths.conversation]: { stdout: slurped([]) },
+  };
+}
+
 /** The JSON gh prints for a pull request. */
 export function pullJson(fields: PullFields = {}): string {
   const number = fields.number ?? 12;
@@ -86,9 +102,4 @@ export function pullJson(fields: PullFields = {}): string {
     head: { sha: fields.headSha ?? SHA_A, ref: "feature", repo: { id: 99 } },
     base: { sha: fields.baseSha ?? SHA_B, ref: "main", repo: { id: fields.repoId ?? 4242 } },
   });
-}
-
-/** What `gh api --paginate --slurp` prints: one array whose elements are the pages. */
-export function slurped(...pages: readonly (readonly unknown[])[]): string {
-  return JSON.stringify(pages);
 }

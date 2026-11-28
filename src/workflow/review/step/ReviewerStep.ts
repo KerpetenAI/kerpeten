@@ -5,7 +5,7 @@ import { type After, FlowStep, FlowStepBase, HarnessWiring, Use } from "../../..
 import { deadlines } from "../../../harnesses/harnesses-utils.ts";
 import { ReviewerHarness } from "../../../harnesses/review/ReviewerHarness.ts";
 import { RuleFiles } from "../../../harnesses/review/RuleFiles.ts";
-import type { ChangeStep } from "./ChangeStep.ts";
+import type { WrittenCommentStep } from "./WrittenCommentStep.ts";
 
 /**
  * Reads the project's rule files and runs the reviewer on the change and the rules in the run of the permission group,
@@ -26,7 +26,7 @@ export class ReviewerStep extends FlowStepBase {
   @Use(RuleFiles)
   private readonly ruleFiles!: RuleFiles;
 
-  public async execute(state: After<typeof ChangeStep>) {
+  public async execute(state: After<typeof WrittenCommentStep>) {
     const { config, reviewerClient, log, change } = state;
     const { grant } = this.run;
     const permissions = HarnessWiring.given(ReviewerHarness, grant);

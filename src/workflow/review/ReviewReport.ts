@@ -6,13 +6,14 @@ export class ReviewReport {
   }
 
   public static of(basis: ReportBasis, outcome: ReviewOutcome): ReviewResult {
-    const { review, candidates, judged, findings } = outcome;
+    const { review, candidates, judged, findings, commentPlan } = outcome;
 
     const partialReason = review.partialReason ?? judged?.partialReason;
 
     return {
       ...ReviewReport.head(basis),
-      findings,
+      findings: commentPlan?.findings ?? findings,
+      ...(commentPlan === undefined ? {} : { commentPlan }),
       dropped: candidates.dropped,
       clipped: candidates.clipped,
       partial: partialReason !== undefined,

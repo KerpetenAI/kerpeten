@@ -1,8 +1,8 @@
 import type { ChatGptPlan } from "../../../capability/chatgpt/ChatGptPlan.ts";
 import type { KerpetenConfig } from "../../../capability/config/types/config.ts";
 import type { MergeRequestState, PlatformKind } from "../../../capability/platform/types/platform.ts";
-import type { JudgedFinding } from "../../../harnesses/review/types/review.ts";
 import type { ProviderLlm, UsageEntry } from "../../../harnesses/types/harnesses.ts";
+import type { PlannedFinding } from "../../../layer/comment/types/comment.ts";
 
 /** What the `review` command line asks for: the input of the review command workflow. */
 export interface ReviewFlags {
@@ -28,9 +28,29 @@ export interface MergeRequestJson {
   readonly base_sha: string;
 }
 
+/** A line comment of the comment plan in the JSON output: where it would be written, and its whole text. */
+export interface LineCommentJson {
+  readonly file: string;
+  readonly start_line: number;
+  readonly end_line: number;
+  readonly body: string;
+}
+
+/** The summary comment of the comment plan in the JSON output: its whole text. */
+export interface SummaryCommentJson {
+  readonly body: string;
+}
+
+/** The comment plan in the JSON output: what a posted review would write to the merge request. */
+export interface CommentPlanJson {
+  readonly line_comments: readonly LineCommentJson[];
+  readonly summary: SummaryCommentJson;
+}
+
 export interface ReviewJson {
   readonly merge_request?: MergeRequestJson;
-  readonly findings: readonly JudgedFinding[];
+  readonly findings: readonly PlannedFinding[];
+  readonly comment_plan?: CommentPlanJson;
   readonly usage: readonly UsageEntry[];
 }
 

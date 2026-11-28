@@ -1,6 +1,6 @@
 import { Capability, CapabilityBase, Use } from "../../harness-kit/index.ts";
 import { Git } from "./Git.ts";
-import type { ChangedFile, ChangeStatus, DiffResult } from "./types/git.ts";
+import type { ChangedFile, ChangeStatus, DiffResult, PatchSection } from "./types/git.ts";
 
 @Capability({
   name: "git-diff",
@@ -190,6 +190,34 @@ export class GitDiff extends CapabilityBase {
   }
 
   public static filterPatch(patch: string, keep: (path: string) => boolean): string {
+    const starts = GitDiff.sectionStarts(patch);
+
+    if (starts.length === 0) return patch;
+
+    let result = patch.slice(0, starts[0]);
+
+    for (const section of GitDiff.sections(patch)) {
+      if (keep(section.path)) result += section.text;
+    }
+
+    return result;
+  }
+
+  /**
+   * The sections of a patch, one per file and in the patch's order, each with the path the patch gives its file: the
+   * new path of a renamed file, the old path of a deleted one.
+   */
+  public static sections(patch: string): PatchSection[] {
+    const starts = GitDiff.sectionStarts(patch);
+
+    return starts.map((start, index) => {
+      const text = patch.slice(start, starts[index + 1] ?? patch.length);
+
+      return { path: GitDiff.sectionPath(text), text };
+    });
+  }
+
+  private static sectionStarts(patch: string): number[] {
     const starts: number[] = [];
 
     if (patch.startsWith(GitDiff.DIFF_HEADER)) starts.push(0);
@@ -201,17 +229,7 @@ export class GitDiff extends CapabilityBase {
       at = patch.indexOf(`\n${GitDiff.DIFF_HEADER}`, at + 1);
     }
 
-    if (starts.length === 0) return patch;
-
-    let result = patch.slice(0, starts[0]);
-
-    starts.forEach((start, index) => {
-      const section = patch.slice(start, starts[index + 1] ?? patch.length);
-
-      if (keep(GitDiff.sectionPath(section))) result += section;
-    });
-
-    return result;
+    return starts;
   }
 
   private static headerPath(line: string, marker: "--- " | "+++ ", prefix: "a/" | "b/"): string | undefined {
