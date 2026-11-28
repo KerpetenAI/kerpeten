@@ -16,6 +16,7 @@ import { PermissionGroups } from "../capability/PermissionGroups.ts";
 import { RepoJail } from "../capability/repo/RepoJail.ts";
 import { RipgrepSearch } from "../capability/repo/RipgrepSearch.ts";
 import { SearchTimer } from "../capability/repo/SearchTimer.ts";
+import { AnswerReader } from "../capability/stdin/AnswerReader.ts";
 import { Cli } from "../cli/Cli.ts";
 import type { CliOptions } from "../cli/types/cli.ts";
 import { AiSdkAdapter } from "../harness-kit/ai-sdk/index.ts";
@@ -36,6 +37,7 @@ import { AuthStep } from "../workflow/auth/step/AuthStep.ts";
 import { CapabilitiesCommand } from "../workflow/capabilities/CapabilitiesCommand.ts";
 import { CapabilityListStep } from "../workflow/capabilities/step/CapabilityListStep.ts";
 import { InitCommand } from "../workflow/init/InitCommand.ts";
+import { InitQuestions } from "../workflow/init/InitQuestions.ts";
 import { InitCheckStep } from "../workflow/init/step/InitCheckStep.ts";
 import { InitQuestionStep } from "../workflow/init/step/InitQuestionStep.ts";
 import { InitTargetStep } from "../workflow/init/step/InitTargetStep.ts";
@@ -111,6 +113,7 @@ export class KerpetenApp {
     GitRoot,
     ContextPackFile,
     ExtraContextFile,
+    AnswerReader,
     Git,
     GitDiff,
     HeadCommit,
@@ -119,6 +122,7 @@ export class KerpetenApp {
     SearchTimer,
     CandidateFilter,
     RuleFiles,
+    InitQuestions,
   ];
 
   public static async run(

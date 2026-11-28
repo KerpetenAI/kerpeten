@@ -27,6 +27,7 @@ describe("capabilities", () => {
     expect(code).toBe(ExitCode.OK);
 
     expect(out.filter((line) => !line.startsWith(" "))).toEqual([
+      "answer-reader",
       "chatgpt-auth-file",
       "chatgpt-oauth",
       "chatgpt-sign-in",
@@ -68,6 +69,7 @@ describe("capabilities", () => {
     const permissions = Object.fromEntries((await registered()).map((spec) => [spec.name, spec.permission]));
 
     expect(permissions).toEqual({
+      "answer-reader": undefined,
       "chatgpt-auth-file": undefined,
       "chatgpt-oauth": undefined,
       "chatgpt-sign-in": undefined,
@@ -89,7 +91,7 @@ describe("capabilities", () => {
       .filter((path) => !path.startsWith("src/harness-kit/"))
       .filter((path) => /^@Capability\(/m.test(readFileSync(join(root, path), "utf8")));
 
-    expect(marked.length).toBe(13);
+    expect(marked.length).toBe(14);
     expect((await registered()).length).toBe(marked.length);
   });
 });

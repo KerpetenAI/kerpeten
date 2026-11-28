@@ -1,7 +1,5 @@
 import type { ModelConfig } from "../../../capability/config/types/config.ts";
 import type { ChatGptModel } from "../../../harness-kit/ai-sdk/index.ts";
-import type { Io } from "../../../harness-kit/index.ts";
-import type { AnswerReader } from "../AnswerReader.ts";
 
 export type InitProvider = ModelConfig["provider"];
 
@@ -30,10 +28,3 @@ export type Parsed<T> = { readonly ok: true; readonly value: T } | { readonly ok
 export type PlanModelList =
   | { readonly ok: true; readonly models: readonly ChatGptModel[] }
   | { readonly ok: false; readonly reason: string };
-
-/** Where the questions go, where the answers come from and how the models of the ChatGPT plan are listed. */
-export interface InitDialog {
-  readonly io: Io;
-  readonly answers: AnswerReader;
-  readonly planModels: () => Promise<PlanModelList>;
-}

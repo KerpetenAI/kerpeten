@@ -1,24 +1,21 @@
+import { Inject } from "@asenajs/ioc";
+import { ChatGptAuthFile } from "../../capability/chatgpt/ChatGptAuthFile.ts";
+import { ChatGptPlan } from "../../capability/chatgpt/ChatGptPlan.ts";
 import { configSchema } from "../../capability/config/schemas/config-schema.ts";
-import type { Io } from "../../harness-kit/index.ts";
+import { AnswerReader } from "../../capability/stdin/AnswerReader.ts";
+import { type KitInstances, KitNames, RunService, Use } from "../../harness-kit/index.ts";
 import type { PromptRole } from "../../harnesses/types/harnesses.ts";
 import { terminalLine } from "../../text/text-utils.ts";
-import type { AnswerReader } from "./AnswerReader.ts";
-import type {
-  InitAnswers,
-  InitDialog,
-  InitModel,
-  InitProvider,
-  Parsed,
-  PlanModelList,
-  ProviderChoice,
-} from "./types/init.ts";
+import type { InitAnswers, InitModel, InitProvider, Parsed, PlanModelList, ProviderChoice } from "./types/init.ts";
 
 /**
  * The questions of `kerpeten init`, one answer per line: the provider and model of the reviewer, whether the judge
  * uses the same, the provider and model of the judge when it does not, and the language of the review comments. An
  * answer that is not valid is asked again with a short reason; a model id and a language tag are checked with the
- * rules of the configuration schema.
+ * rules of the configuration schema. A run builds it once: the models of the ChatGPT plan are fetched at most once and
+ * serve the reviewer and the judge.
  */
+@RunService("kerpeten:init-questions")
 export class InitQuestions {
   public static readonly PROVIDERS: readonly ProviderChoice[] = [
     { provider: "chatgpt", label: "ChatGPT plan (chatgpt)" },
@@ -32,16 +29,19 @@ export class InitQuestions {
 
   private static readonly LANGUAGE_REASON = "A language tag looks like en, tr or pt-BR.";
 
-  private readonly io: Io;
-  private readonly answers: AnswerReader;
-  private readonly planModels: () => Promise<PlanModelList>;
-  private listed: Promise<PlanModelList> | undefined;
+  @Inject(KitNames.IO)
+  private readonly io!: KitInstances[KitNames.IO];
 
-  public constructor(dialog: InitDialog) {
-    this.io = dialog.io;
-    this.answers = dialog.answers;
-    this.planModels = dialog.planModels;
-  }
+  @Inject(ChatGptAuthFile)
+  private readonly file!: ChatGptAuthFile;
+
+  @Inject(ChatGptPlan)
+  private readonly plan!: ChatGptPlan;
+
+  @Use(AnswerReader)
+  private readonly answers!: AnswerReader;
+
+  private listed: Promise<PlanModelList> | undefined;
 
   public async ask(): Promise<InitAnswers> {
     const reviewer = await this.model("reviewer");
@@ -101,6 +101,25 @@ export class InitQuestions {
 
       return picked.ok ? InitQuestions.modelId("chatgpt", picked.value.slug) : picked;
     });
+  }
+
+  private async planModels(): Promise<PlanModelList> {
+    try {
+      if (this.file.read()?.tokens === undefined) {
+        return { ok: false, reason: "Not signed in to ChatGPT, so the models of your plan cannot be listed" };
+      }
+
+      const models = await this.plan.adapter.listModels();
+
+      if (models.length === 0) return { ok: false, reason: "Your ChatGPT plan lists no models" };
+
+      return { ok: true, models };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `The models of your ChatGPT plan cannot be listed (${terminalLine(ChatGptPlan.failureMessage(error))})`,
+      };
+    }
   }
 
   private async typedModel(role: PromptRole, provider: InitProvider): Promise<InitModel> {
