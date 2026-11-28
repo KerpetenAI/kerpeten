@@ -65,8 +65,10 @@ findings: 4
 3. Give Kerpeten the key of your provider, or sign in with `kerpeten auth login` when you chose your ChatGPT plan:
 
    ```sh
-   export ANTHROPIC_API_KEY=<your key>
+   export ANTHROPIC_API_KEY="<your key>"
    ```
+
+   Put your key in place of `<your key>`.
 
 4. Commit your work, then run the review from inside the repository:
 
