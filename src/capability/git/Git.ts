@@ -5,7 +5,7 @@ import type { BlobResult, GitResult } from "./types/git.ts";
 @Capability({
   name: "git",
   description:
-    "Runs git in the repository: resolves revisions, finds the merge base, lists the tracked files and reads commits and blobs.",
+    "Runs git in the repository: resolves revisions, finds the merge base, lists the tracked files, reads commits and blobs and the URL of the origin remote.",
   scope: "run",
 })
 export class Git extends ProcessCapability {
@@ -26,6 +26,8 @@ export class Git extends ProcessCapability {
   private static readonly SHA = /^[0-9a-f]{40}$/;
 
   private static readonly NEW_IN_INDEX = /^(A[ MD]| A) /;
+
+  private static readonly NO_SUCH_REMOTE_EXIT = 2;
 
   @RunValue("repo")
   private readonly repo!: string;
@@ -117,6 +119,20 @@ export class Git extends ProcessCapability {
     }
 
     return name;
+  }
+
+  /**
+   * The URL of the remote `origin` as git uses it, with the `insteadOf` rewrites of the configuration applied, or
+   * `undefined` when the repository has no such remote. The URL is outside data and may hold a password.
+   */
+  public async originUrl(): Promise<string | undefined> {
+    const args = ["remote", "get-url", "origin"];
+    const result = await this.run(args);
+
+    if (result.exitCode === Git.NO_SUCH_REMOTE_EXIT) return undefined;
+    if (result.exitCode !== 0) throw new GitError(args, result.exitCode, result.stderr);
+
+    return result.stdout.toString("utf8").trim();
   }
 
   public async currentBranch(): Promise<string | undefined> {

@@ -39,6 +39,7 @@ describe("capabilities", () => {
       "git-diff",
       "git-root",
       "github-platform",
+      "gitlab-platform",
       "repo-jail (permission: repo:read)",
       "ripgrep (permission: repo:search)",
       "search-timer (permission: repo:read)",
@@ -82,6 +83,7 @@ describe("capabilities", () => {
       "git-diff": undefined,
       "git-root": undefined,
       "github-platform": undefined,
+      "gitlab-platform": undefined,
       "repo-jail": "repo:read",
       ripgrep: "repo:search",
       "search-timer": "repo:read",
@@ -93,7 +95,7 @@ describe("capabilities", () => {
       .filter((path) => !path.startsWith("src/harness-kit/"))
       .filter((path) => /^@Capability\(/m.test(readFileSync(join(root, path), "utf8")));
 
-    expect(marked.length).toBe(15);
+    expect(marked.length).toBe(16);
     expect((await registered()).length).toBe(marked.length);
   });
 });

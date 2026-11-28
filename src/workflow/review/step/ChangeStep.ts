@@ -6,6 +6,7 @@ import { ExtraContextFile } from "../../../capability/extra-context/ExtraContext
 import { Git } from "../../../capability/git/Git.ts";
 import { GitDiff } from "../../../capability/git/GitDiff.ts";
 import { HeadCommit } from "../../../capability/git/HeadCommit.ts";
+import { PlatformWords } from "../../../capability/platform/PlatformWords.ts";
 import { type After, FlowStep, FlowStepBase, Use } from "../../../harness-kit/index.ts";
 import { Prompts } from "../../../harnesses/Prompts.ts";
 import { ReviewInputError } from "../../../harnesses/review/ReviewInputError.ts";
@@ -22,7 +23,8 @@ import type { MergeRequestStep } from "./MergeRequestStep.ts";
  * A review of a merge request is of the merge request's last commit: HEAD must be that commit, and this is checked
  * first, before the uncommitted changes and before the diff, so a working copy at another commit costs no model call.
  * Its base is the merge base of the merge request's base commit and HEAD, and the reviewer gets its title and its
- * description; the commit messages stand in for an empty description.
+ * description; the commit messages stand in for an empty description. What it tells the user about the merge request
+ * is in the words of its platform: a pull request and `gh` on GitHub, a merge request and `glab` on GitLab.
  */
 @FlowStep({
   name: "change",
@@ -64,8 +66,9 @@ export class ChangeStep extends FlowStepBase {
 
   private static otherCommitMessage(mergeRequest: ReviewedMergeRequest, head: string): string {
     const { number } = mergeRequest;
+    const words = PlatformWords.of(mergeRequest.kind);
 
-    return `HEAD is at ${head} but pull request ${number} is at ${mergeRequest.headSha}; the review is of the pull request's last commit, so run \`gh pr checkout ${number}\`, or push your commits, and run again`;
+    return `HEAD is at ${head} but ${words.noun} ${number} is at ${mergeRequest.headSha}; the review is of the ${words.noun}'s last commit, so run \`${words.checkoutCommand(number)}\`, or push your commits, and run again`;
   }
 
   public async execute(state: After<typeof MergeRequestStep>) {
@@ -161,17 +164,18 @@ export class ChangeStep extends FlowStepBase {
 
   private async mergeRequestBase(mergeRequest: ReviewedMergeRequest, head: string): Promise<string> {
     const { baseSha, number } = mergeRequest;
+    const { noun } = PlatformWords.of(mergeRequest.kind);
 
     if (!(await this.git.hasCommit(baseSha))) {
       throw new ReviewInputError(
-        `the base commit ${baseSha} of pull request ${number} is not in this repository; fetch the branch the pull request goes into, for example with \`git fetch origin\`, and run again`,
+        `the base commit ${baseSha} of ${noun} ${number} is not in this repository; fetch the branch the ${noun} goes into with \`git fetch origin\`, and run again`,
       );
     }
 
     try {
       return await this.git.mergeBase(baseSha, head);
     } catch (error) {
-      throw new ReviewInputError(`cannot use the base commit of pull request ${number}: ${errorMessage(error)}`);
+      throw new ReviewInputError(`cannot use the base commit of ${noun} ${number}: ${errorMessage(error)}`);
     }
   }
 }

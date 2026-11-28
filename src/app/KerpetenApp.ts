@@ -14,6 +14,9 @@ import { GitRoot } from "../capability/git/GitRoot.ts";
 import { HeadCommit } from "../capability/git/HeadCommit.ts";
 import { PermissionGroups } from "../capability/PermissionGroups.ts";
 import { GitHubPlatform } from "../capability/platform/GitHubPlatform.ts";
+import { GitLabPlatform } from "../capability/platform/GitLabPlatform.ts";
+import { OriginProject } from "../capability/platform/OriginProject.ts";
+import { PlatformChoice } from "../capability/platform/PlatformChoice.ts";
 import { RepoJail } from "../capability/repo/RepoJail.ts";
 import { RipgrepSearch } from "../capability/repo/RipgrepSearch.ts";
 import { SearchTimer } from "../capability/repo/SearchTimer.ts";
@@ -121,6 +124,9 @@ export class KerpetenApp {
     GitDiff,
     HeadCommit,
     GitHubPlatform,
+    GitLabPlatform,
+    OriginProject,
+    PlatformChoice,
     RepoJail,
     RipgrepSearch,
     SearchTimer,

@@ -1,12 +1,12 @@
 /** The kind of platform a merge request lives on. */
-export type PlatformKind = "github";
+export type PlatformKind = "github" | "gitlab";
 
 export type MergeRequestState = "open" | "closed" | "merged";
 
 /**
- * A merge request as a platform gives it, in words no platform owns: a GitHub pull request is one. `host` is the
- * platform's host in lowercase without a scheme, `projectId` the platform's own id of the repository the merge request
- * goes into. The title and the description are outside data.
+ * A merge request as a platform gives it, in words no platform owns: a GitHub pull request is one, a GitLab merge
+ * request another. `host` is the platform's host in lowercase without a scheme, `projectId` the platform's own id of
+ * the repository the merge request goes into. The title and the description are outside data.
  */
 export interface MergeRequest {
   readonly kind: PlatformKind;
@@ -68,6 +68,12 @@ export interface PlatformComment {
 export interface PlatformComments {
   readonly comments: readonly PlatformComment[];
   readonly complete: boolean;
+  readonly problems: readonly string[];
+}
+
+/** The entries of one list of a platform that were read, and what was not read of it, one line per problem. */
+export interface PlatformList<T> {
+  readonly items: readonly T[];
   readonly problems: readonly string[];
 }
 

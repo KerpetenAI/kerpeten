@@ -81,6 +81,30 @@ describe("refs", () => {
   });
 });
 
+describe("remotes", () => {
+  test("gives the URL of the origin remote as git uses it, and none when the repository has no origin remote", async () => {
+    const dir = tempRepo("kerpeten-git-remote-");
+
+    try {
+      expect(await (await git(dir)).originUrl()).toBeUndefined();
+
+      sh(dir, ["remote", "add", "upstream", "https://gitlab.com/acme/shop.git"]);
+
+      expect(await (await git(dir)).originUrl()).toBeUndefined();
+
+      sh(dir, ["remote", "add", "origin", "work:acme/shop.git"]);
+
+      expect(await (await git(dir)).originUrl()).toBe("work:acme/shop.git");
+
+      sh(dir, ["config", "url.git@github.com:.insteadOf", "work:"]);
+
+      expect(await (await git(dir)).originUrl()).toBe("git@github.com:acme/shop.git");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("diff", () => {
   test("lists every change with its status, renames and unusual names intact", async () => {
     const result = await (await diff(repo)).between(base, head);
